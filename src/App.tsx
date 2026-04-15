@@ -157,6 +157,12 @@ export default function App() {
   };
 
   const startRecording = () => {
+  // Wek de AudioContext alvast op tijdens deze klik!
+  if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+    audioContextRef.current.resume();
+  } else if (!audioContextRef.current) {
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }
     try {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       if (!SpeechRecognition) { setStatus('Spraakherkenning niet ondersteund.'); return; }
@@ -231,7 +237,13 @@ Antworte NUR mit gültigem JSON, ohne Erklärungen oder Markdown: {"de":"deutsch
     }
   };
 
-  const startNewConversation = () => { setMessages([]); setScore(0); generateAIResponse([]); };
+  const startNewConversation = () => {{ 
+  // --- VOEG DIT TOE ---
+  if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+    audioContextRef.current.resume();
+  } else if (!audioContextRef.current) {
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  } setMessages([]); setScore(0); generateAIResponse([]); };
 
   const downloadTranscript = () => {
     if (messages.length === 0) return;
