@@ -1,6 +1,10 @@
 /**
  * Magische Spiegel — Verjaardagsspiegel voor Kinderen
- * Efteling / Anton Piek stijl  ·  v3
+ * Efteling / Anton Piek stijl  ·  v4
+ * Wijzigingen v4:
+ *  - Vriendelijkere foutmelding: "De spiegel kan nu niet antwoorden. Het is druk op de server. Probeer het later opnieuw!"
+ *  - Foutmelding wordt automatisch voorgelezen
+ *  - Opnieuw-knop verschijnt bij fout zodat kind weet wat te doen
  */
 import { useState, useRef, useEffect } from 'react';
 import { Key } from 'lucide-react';
@@ -87,8 +91,6 @@ Antwoord ALLEEN als JSON zonder markdown:
 };
 
 // ── Ornate spiegellijst SVG ───────────────────────────────────────────────
-// Drie concentrische ellipsen (dubbele lijn), 🪞 emoji in gouden cirkel
-// bovenin, bladranken op de zijkanten, rozetten op de ellipspunten
 function OrnateFrame({ W = 270, H = 330 }) {
   const cx = W / 2, cy = H / 2;
   const rx = cx - 10, ry = cy - 10;
@@ -384,6 +386,7 @@ export default function MagischeSpiegel() {
   const [isSpeaking, setIsSpeaking]   = useState(false);
   const [daysInfo, setDaysInfo]       = useState(null);
   const [showKeyModal, setShowKeyModal] = useState(false);
+  const [hasError, setHasError]       = useState(false);
   const [apiKey, setApiKey] = useState(() => {
     if (ENV_KEY) return ENV_KEY;
     try { return localStorage.getItem('magic_mirror_key') || ''; } catch { return ''; }
@@ -392,6 +395,8 @@ export default function MagischeSpiegel() {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const recRef = useRef(null);
+  // Bewaar parsed datum voor hergebruik bij opnieuw proberen
+  const parsedDateRef = useRef(null);
 
   // Camera
   useEffect(() => {
@@ -451,10 +456,21 @@ export default function MagischeSpiegel() {
     const parsed = parseBirthDate(birthInput);
     if (!parsed) { setStatus('Ik begrijp de datum niet. Bijv. 15-04 ✨'); return; }
     const days = computeDaysUntil(parsed.day, parsed.month);
+    parsedDateRef.current = { ...parsed, days };
     setDaysInfo(days);
     setStatus('');
+    setHasError(false);
     setStep(STEP.DONE);
     fetchMessage(name, parsed.day, parsed.month, days);
+  };
+
+  // ── Opnieuw proberen ─────────────────────────────────────────────────────
+  const handleRetry = () => {
+    if (!parsedDateRef.current) return;
+    const { day, month, days } = parsedDateRef.current;
+    setHasError(false);
+    setStatus('');
+    fetchMessage(name, day, month, days);
   };
 
   // ── Microfoon ────────────────────────────────────────────────────────────
@@ -484,6 +500,8 @@ export default function MagischeSpiegel() {
   const fetchMessage = async (n, day, month, days) => {
     if (!apiKey) { setStatus('Geen API sleutel ingesteld 🔑'); return; }
     setIsThinking(true);
+    setMessage(null);
+    setHasError(false);
     setStatus('De spiegel denkt na... ✨');
 
     try {
@@ -504,19 +522,19 @@ export default function MagischeSpiegel() {
       const raw = resp.content?.[0]?.text || '{}';
       const data = JSON.parse(raw.replace(/```json|```/g,'').trim());
       setMessage(data);
+      setHasError(false);
       setStatus('');
       if (data.nl) {
         setIsSpeaking(true);
         speakWithFallback(data.nl, 'nl', () => setIsSpeaking(false));
       }
     } catch (err) {
-      const msg = err?.message || '';
-      if (msg.includes('overloaded') || msg.includes('503'))
-        setStatus('De spiegel is even druk. Probeer over een minuutje opnieuw. ⏳');
-      else if (msg.includes('timeout'))
-        setStatus('De verbinding duurde te lang. Probeer opnieuw! 🌟');
-      else
-        setStatus('De spiegel kon niet antwoorden. Probeer opnieuw! 🌟');
+      // ── v4: vriendelijke foutmelding, voorgelezen ──────────────────────
+      const errorText = 'De spiegel kan nu niet antwoorden. Het is druk op de server. Probeer het later opnieuw!';
+      setStatus(errorText + ' ⏳');
+      setHasError(true);
+      setIsSpeaking(true);
+      speakWithFallback(errorText, 'nl', () => setIsSpeaking(false));
     }
     setIsThinking(false);
   };
@@ -527,6 +545,8 @@ export default function MagischeSpiegel() {
     setStep(STEP.NAME); setName(''); setBirthInput('');
     setMessage(null); setDaysInfo(null);
     setStatus(''); setIsSpeaking(false);
+    setHasError(false);
+    parsedDateRef.current = null;
   };
 
   const saveKey = (k) => {
@@ -671,6 +691,24 @@ export default function MagischeSpiegel() {
         )}
       </AnimatePresence>
 
+      {/* ── v4: Opnieuw-knop bij fout ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {isDone && !isThinking && hasError && (
+          <motion.div
+            initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }}
+            style={{ marginTop:12, display:'flex', flexDirection:'column',
+              alignItems:'center', gap:6, position:'relative', zIndex:5 }}
+          >
+            <button onClick={handleRetry} style={S.btnRetry}>
+              🔄 Opnieuw proberen
+            </button>
+            <p style={{ margin:0, fontSize:10, color:'rgba(245,230,66,0.26)', fontStyle:'italic' }}>
+              Tik hier om het nog een keer te proberen
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Volgend kind */}
       {isDone && !isThinking && message && (
         <motion.div
@@ -761,6 +799,10 @@ const CSS = `
     0%,100% { box-shadow:0 0 9px rgba(245,230,66,0.2); }
     50%     { box-shadow:0 0 20px rgba(245,230,66,0.56); }
   }
+  @keyframes retryPulse {
+    0%,100% { box-shadow:0 0 10px rgba(255,140,0,0.3); }
+    50%     { box-shadow:0 0 22px rgba(255,140,0,0.7); }
+  }
 `;
 
 // ── Styles ────────────────────────────────────────────────────────────────
@@ -844,8 +886,20 @@ const S = {
   },
   status: {
     fontSize:12, color:'rgba(245,230,66,0.55)',
-    fontStyle:'italic', margin:'4px 0',
+    fontStyle:'italic', margin:'4px 12px',
     zIndex:5, textAlign:'center', position:'relative',
+    maxWidth:380, lineHeight:1.6,
+  },
+  btnRetry: {
+    padding:'11px 28px',
+    background:'linear-gradient(135deg,#7a3800,#c05a00,#ff8c00,#c05a00,#7a3800)',
+    backgroundSize:'200% auto',
+    border:'none', borderRadius:30,
+    color:'#fff8f0', fontWeight:700, cursor:'pointer',
+    fontSize:14, fontFamily:"'IM Fell English', serif",
+    letterSpacing:'0.08em',
+    boxShadow:'0 4px 18px rgba(200,80,0,0.46)',
+    animation:'retryPulse 2s ease-in-out infinite',
   },
   btnNext: {
     padding:'11px 28px',
