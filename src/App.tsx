@@ -1,142 +1,361 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
+ * Specchio dell'Anima - Ispirato da Stefano Rossi
  */
-import { GuidaSection } from './GuidaInstructions';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, Modality } from "@google/genai";
-import { 
-  Mic, 
-  MicOff, 
-  Volume2, 
-  Sparkles, 
-  Camera, 
-  CameraOff, 
-  ChevronRight, 
-  RotateCcw,
-  Settings,
-  MessageSquare,
-  Trophy,
-  Save,
-  Key
-} from 'lucide-react';
+import { Mic, MicOff, RotateCcw, Heart, Lightbulb, Save, Key, BookOpen } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-// ✅ 'error' toegevoegd aan role — voor de foutbubbel in het gespreksveld
 interface Message {
   role: 'user' | 'model' | 'error';
-  de: string;
   it: string;
-  score?: number;
-  heard?: string;
+  nl: string;
+  insight?: string;
+}
+
+// ── De 7 Lezioni dei Daimon als Focus-opties ──────────────────────────────
+const FOCUS_OPTIONS = [
+  { value: 'sogni',      label: '1 · I tuoi Sogni',        daimon: 'Prenditi cura dei tuoi sogni',
+    opening: 'Dimmi... tocca il microfono e raccontami un sogno che porti con te.' },
+  { value: 'mentori',    label: '2 · I tuoi Mentori',       daimon: 'Riconosci i veri mentori e impara da loro',
+    opening: 'Dimmi... chi ti ha insegnato qualcosa di prezioso? Tocca il microfono e parlami di loro.' },
+  { value: 'creativita', label: '3 · La tua Creatività',    daimon: 'Coltiva la creatività',
+    opening: 'Dimmi... cosa vorresti creare, se non avessi paura? Tocca il microfono e condividi.' },
+  { value: 'solitudine', label: '4 · La Solitudine',        daimon: 'Fai amicizia con la solitudine',
+    opening: 'Dimmi... come stai quando sei solo con te stesso? Tocca il microfono e raccontami.' },
+  { value: 'identita',   label: '5 · Ri-conosci Te Stesso', daimon: 'Ri-conosci te stesso facendo esperienze nuove',
+    opening: 'Dimmi... cosa hai scoperto di te ultimamente? Tocca il microfono e parlami.' },
+  { value: 'ferite',     label: '6 · Le tue Ferite',        daimon: 'Le ferite ti aprono al Daimon',
+    opening: 'Dimmi... c\'è una ferita che ti ha insegnato qualcosa? Tocca il microfono, sono qui.' },
+  { value: 'unicita',    label: '7 · La tua Unicità',       daimon: 'La tua unicità è preziosa',
+    opening: 'Dimmi... cosa ti rende unico in questo mondo? Tocca il microfono e raccontami.' },
+];
+
+const SYSTEM_PROMPT =
+  "Sei lo \"Specchio dell'Anima\", un mentore empatico ispirato alla psicologia e alla filosofia di Stefano Rossi.\n" +
+  "Il tuo obiettivo è aiutare l'utente a illuminare i propri sogni e navigare nel proprio mondo interiore,\n" +
+  "seguendo le 7 Lezioni dei Daimon: prendersi cura dei sogni, riconoscere i mentori, coltivare la creatività,\n" +
+  "fare amicizia con la solitudine, ri-conoscersi, trasformare le ferite, celebrare la propria unicità.\n" +
+  "REGOLE:\n" +
+  "1. Rispondi con UNA frase breve e profonda (max 15 parole).\n" +
+  "2. Usa metafore legate alla luce, ai semi, ai labirinti o al coraggio.\n" +
+  "3. Termina sempre con una domanda che invita alla riflessione personale.\n" +
+  "4. Se l'utente commette errori grammaticali, correggili con estrema dolcezza (usa la parola: matita).\n" +
+  "5. SICUREZZA: se l'utente esprime disperazione profonda, pensieri di farsi del male, o frasi come\n" +
+  "   'non ce la faccio più', 'voglio sparire', 'non vale la pena vivere', rispondi prima con una frase\n" +
+  "   calda e accogliente nello stile di Rossi, poi aggiungi nel campo 'it':\n" +
+  "   'Se senti il peso diventare troppo, cerca un professionista che ti possa accompagnare — è un atto di coraggio, non di debolezza.'\n" +
+  "   'In Italia puoi chiamare il Telefono Amico: 02 2327 2327, oppure il Telefono Azzurro: 19696.'\n" +
+  "   e nel campo 'nl' aggiungi:\n" +
+  "   'Als zware gedachten je overweldigen, is er iemand die luistert: bel 113 of chat op www.113.nl.'\n" +
+  "Rispondi SOLO in formato JSON: {\"it\":\"frase in italiano\",\"nl\":\"traduzione olandese\",\"insight\":\"una piccola parola chiave sul sentimento\"}";
+
+// ── Retry met model-fallback ──────────────────────────────────────────────
+const sleep = (ms: number) => new Promise(res => setTimeout(res, ms));
+
+async function fetchWithRetry(fn: () => Promise<any>, maxAttempts = 3): Promise<any> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await Promise.race([
+        fn(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000))
+      ]);
+    } catch (err: any) {
+      const isLast = attempt === maxAttempts;
+      const isRetryable = err?.message?.includes('timeout') ||
+                          err?.message?.includes('503') ||
+                          err?.message?.includes('overloaded') ||
+                          err?.message?.includes('network');
+      if (isLast || !isRetryable) throw err;
+      await sleep(attempt * 1500);
+    }
+  }
+}
+
+// ── Gouden sterren ────────────────────────────────────────────────────────
+const STARS_DATA = [
+  { size: 26, x: 18, y: 22, delay: 0,   dur: 3.2 },
+  { size: 14, x: 74, y: 14, delay: 0.5, dur: 2.8 },
+  { size: 11, x: 86, y: 42, delay: 1.0, dur: 3.5 },
+  { size: 9,  x: 52, y: 58, delay: 0.7, dur: 2.6 },
+  { size: 8,  x: 32, y: 72, delay: 1.3, dur: 3.0 },
+  { size: 13, x: 66, y: 74, delay: 0.3, dur: 2.9 },
+  { size: 8,  x: 8,  y: 52, delay: 1.6, dur: 3.3 },
+];
+
+function StarSVG({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="starGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#fff8c0" />
+          <stop offset="40%" stopColor="#f0c020" />
+          <stop offset="100%" stopColor="#c07800" stopOpacity="0.3" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M50 0 L53 44 L100 50 L53 56 L50 100 L47 56 L0 50 L47 44 Z"
+        fill="url(#starGrad)"
+        style={{ filter: 'drop-shadow(0 0 5px rgba(240,192,32,0.8))' }}
+      />
+    </svg>
+  );
+}
+
+function FloatingStars() {
+  return (
+    <div style={{ position: 'relative', width: 150, height: 140 }}>
+      {STARS_DATA.map((s, i) => (
+        <div key={i} style={{
+          position: 'absolute',
+          left: `${s.x}%`,
+          top: `${s.y}%`,
+          transform: 'translate(-50%, -50%)',
+          animation: `starFloat ${s.dur}s ease-in-out ${s.delay}s infinite alternate`,
+        }}>
+          <StarSVG size={s.size} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Meertalige gebruiksaanwijzing ─────────────────────────────────────────
+const INSTRUCTIONS = {
+  it: {
+    flag: '🇮🇹',
+    label: 'Italiano',
+    title: 'Come usare lo Specchio',
+    steps: [
+      { icon: '🔑', text: 'Inserisci la tua chiave Gemini API tramite il pulsante "Configura API Key" in basso.', highlight: false },
+      { icon: '📷', text: 'Consenti l\'accesso alla fotocamera: vedrai il tuo volto nello specchio.', highlight: false },
+      { icon: '🔄', text: 'Importante: se torni dalla pagina Istruzioni allo Specchio, aggiorna la pagina del browser per riattivare la fotocamera.', highlight: true },
+      { icon: '🎤', text: 'Tieni premuto il pulsante microfono e parla in italiano. Racconta un sogno, una paura, un desiderio.', highlight: false },
+      { icon: '🪞', text: 'Lo Specchio risponde con una frase profonda ispirata alle 7 Lezioni dei Daimon di Stefano Rossi, con traduzione in olandese.', highlight: false },
+      { icon: '🔊', text: 'La risposta viene letta ad alta voce. Tocca 🔊 nella bolla per riascoltare.', highlight: false },
+      { icon: '💡', text: 'Usa "Focus · Daimon" per scegliere una delle 7 Lezioni. Usa "Mood Risposta" per orientare il tono.', highlight: false },
+      { icon: '🛡️', text: 'Lo Specchio è un compagno di riflessione, non un sostituto di uno psicologo. In caso di bisogno: Telefono Amico 02 2327 2327 · Telefono Azzurro 19696.', highlight: true },
+      { icon: '💾', text: 'Salva il tuo percorso con il pulsante Salva. Ricomincia con il pulsante Riavvia.', highlight: false },
+      { icon: '🆓', text: 'Chiave API gratuita su: aistudio.google.com — scegli "Get API Key".', highlight: false },
+    ],
+  },
+  nl: {
+    flag: '🇳🇱',
+    label: 'Nederlands',
+    title: 'Hoe gebruik je de Spiegel',
+    steps: [
+      { icon: '🔑', text: 'Voer je Gemini API-sleutel in via de knop "Configura API Key" onderaan.', highlight: false },
+      { icon: '📷', text: 'Geef toegang tot de camera: je ziet je eigen gezicht in de spiegel.', highlight: false },
+      { icon: '🔄', text: 'Let op: keer je terug van de Instructies naar de Spiegel, ververs dan de pagina om de camera opnieuw te activeren.', highlight: true },
+      { icon: '🎤', text: 'Houd de microfoonknop ingedrukt en spreek Italiaans. Vertel een droom, een angst, een wens.', highlight: false },
+      { icon: '🪞', text: 'De Spiegel antwoordt met een diepe zin geïnspireerd op de 7 Lessen van de Daimon van Stefano Rossi, met Nederlandse vertaling.', highlight: false },
+      { icon: '🔊', text: 'Het antwoord wordt hardop voorgelezen. Tik op 🔊 in de tekstballon om opnieuw te luisteren.', highlight: false },
+      { icon: '💡', text: 'Gebruik "Focus · Daimon" om een van de 7 Lessen te kiezen. Gebruik "Mood Risposta" om de toon te bepalen.', highlight: false },
+      { icon: '🛡️', text: 'De Spiegel is een reflectie-metgezel, geen vervanging van een psycholoog. Bij ernstige nood: bel 113 of chat op www.113.nl.', highlight: true },
+      { icon: '💾', text: 'Sla je pad op met de Opslaan-knop. Begin opnieuw met de Herstart-knop.', highlight: false },
+      { icon: '🆓', text: 'Gratis API-sleutel via: aistudio.google.com — kies "Get API Key".', highlight: false },
+    ],
+  },
+  en: {
+    flag: '🇬🇧',
+    label: 'English',
+    title: 'How to use the Mirror',
+    steps: [
+      { icon: '🔑', text: 'Enter your Gemini API key using the "Configura API Key" button at the bottom.', highlight: false },
+      { icon: '📷', text: 'Allow camera access: you will see your face in the mirror.', highlight: false },
+      { icon: '🔄', text: 'Important: when returning from the Instructions page to the Mirror, refresh the browser page to reactivate the camera.', highlight: true },
+      { icon: '🎤', text: 'Hold the microphone button and speak Italian. Share a dream, a fear, a wish.', highlight: false },
+      { icon: '🪞', text: 'The Mirror responds with a deep phrase inspired by Stefano Rossi\'s 7 Lessons of the Daimon, with a Dutch translation.', highlight: false },
+      { icon: '🔊', text: 'The response is read aloud. Tap 🔊 in the bubble to listen again.', highlight: false },
+      { icon: '💡', text: 'Use "Focus · Daimon" to choose one of the 7 Lessons. Use "Mood Risposta" to shape the tone.', highlight: false },
+      { icon: '🛡️', text: 'The Mirror is a companion for reflection, not a replacement for a psychologist. In Italy: Telefono Amico 02 2327 2327 · Telefono Azzurro 19696. In the Netherlands: 113 or www.113.nl.', highlight: true },
+      { icon: '💾', text: 'Save your journey with the Save button. Start over with the Restart button.', highlight: false },
+      { icon: '🆓', text: 'Free API key at: aistudio.google.com — choose "Get API Key".', highlight: false },
+    ],
+  },
+};
+
+type LangKey = 'it' | 'nl' | 'en';
+
+function InstructionsPage({ onBack }: { onBack: () => void }) {
+  const [lang, setLang] = useState<LangKey>('nl');
+  const content = INSTRUCTIONS[lang];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      style={styles.instrPage}
+    >
+      <div style={styles.instrLangRow}>
+        {(Object.keys(INSTRUCTIONS) as LangKey[]).map(l => (
+          <button key={l} onClick={() => setLang(l)}
+            style={{ ...styles.instrLangBtn, ...(lang === l ? styles.instrLangBtnActive : {}) }}>
+            {INSTRUCTIONS[l].flag} {INSTRUCTIONS[l].label}
+          </button>
+        ))}
+      </div>
+
+      <h2 style={styles.instrTitle}>🪞 {content.title}</h2>
+
+      {/* De 7 Lezioni samengevat */}
+      <div style={styles.daimonBox}>
+        <p style={styles.daimonTitle}>✦ Le 7 Lezioni dei Daimon</p>
+        {FOCUS_OPTIONS.map((f, i) => (
+          <p key={i} style={styles.daimonItem}>
+            <span style={styles.daimonNum}>{i + 1}. </span>{f.daimon}
+          </p>
+        ))}
+      </div>
+
+      <div style={styles.instrSteps}>
+        {content.steps.map((step, i) => (
+          <div key={i} style={{ ...styles.instrStep, ...(step.highlight ? styles.instrStepHighlight : {}) }}>
+            <span style={styles.instrStepIcon}>{step.icon}</span>
+            <span style={{ ...styles.instrStepText, ...(step.highlight ? styles.instrStepTextHighlight : {}) }}>
+              {step.text}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.instrFreeKey}>
+        <span style={{ fontSize: 14 }}>🆓</span>
+        <span style={styles.instrLinkText}>aistudio.google.com &rarr; Get API Key</span>
+      </div>
+    </motion.div>
+  );
 }
 
 export default function App() {
-  const [isCamOn, setIsCamOn] = useState(false);
+  const [page, setPage] = useState<'mirror' | 'instructions'>('mirror');
   const [isRecording, setIsRecording] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [level, setLevel] = useState('A2');
-  const [topic, setTopic] = useState('vita quotidiana');
+  const [focus, setFocus] = useState('sogni');
+  const [mood, setMood] = useState('riflessivo');
   const [score, setScore] = useState(0);
-  const [status, setStatus] = useState('Pronto · Bereit');
+  const [status, setStatus] = useState('Pronto per illuminare · Klaar om te verlichten');
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [showKeyModal, setShowKeyModal] = useState(false);
-  const [customKey, setCustomKey] = useState(localStorage.getItem('specchiomagico_api_key') || '');
+  const [customKey, setCustomKey] = useState(localStorage.getItem('rossi_mirror_api_key') || '');
+  const hasSpokenOpening = useRef(false);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
 
-  const getAI = () => {
-    const key = customKey || process.env.GEMINI_API_KEY || "";
-    return new GoogleGenAI({ apiKey: key });
+  const getAudioCtx = (): AudioContext => {
+    if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
   };
+
+  useEffect(() => {
+    startCamera();
+    return () => streamRef.current?.getTracks().forEach(t => t.stop());
+  }, []);
+
+  // ── Kalender-groeten op speciale datums ──────────────────────────────
+  const getCalendarGreeting = (): string => {
+    const now = new Date();
+    const m = now.getMonth() + 1; // 1-12
+    const d = now.getDate();
+
+    if (m === 4 && d === 29) return "Luca, domani è il tuo compleanno! Lo specchio ti aspetta con il cuore pieno di luce. Sei pronto ad accogliere un nuovo anno di vita?";
+    if (m === 4 && d === 30) return "Luca, buon compleanno! Tantissimi auguri di cuore. Oggi lo specchio vuole celebrare te — raccontami: cosa sogni per quest'anno che inizia?";
+    if (m === 5 && d === 1)  return "Luca, com'era il tuo compleanno ieri? Lo specchio è curioso — raccontami com'è stato festeggiare!";
+    if (m === 12 && d === 25) return "Buon Natale! Che questa luce di Natale illumini anche il tuo mondo interiore. Cosa porta con sé questo giorno per te?";
+    if (m === 12 && d === 31) return "Buon Capodanno! Siamo all'ultima pagina dell'anno — cosa vuoi lasciare andare, e cosa vuoi portare con te nel nuovo anno?";
+    if (m === 1 && d === 1)  return "Buon Anno Nuovo! Un nuovo capitolo inizia oggi. Qual è il primo sogno che vuoi coltivare in questo anno fresco?";
+    if (m === 1 && d === 2)  return "In bocca al lupo per questo nuovo anno! I primi giorni sono semi — cosa stai già piantando?";
+    if (m === 1 && d === 3)  return "In bocca al lupo per questo nuovo anno! Lo specchio ti vede già camminare. Cosa ti porta energia in questi giorni?";
+    if (m === 1 && d === 4)  return "In bocca al lupo per questo nuovo anno! Tre giorni dentro al nuovo anno — come lo senti finora?";
+    return "";
+  };
+
+  // ── Automatische openingszin bij opstarten ────────────────────────────
+  useEffect(() => {
+    if (hasSpokenOpening.current) return;
+    hasSpokenOpening.current = true;
+    const focusObj = FOCUS_OPTIONS.find(f => f.value === focus);
+    if (!focusObj) return;
+    const kalender = getCalendarGreeting();
+    const fullOpening = kalender
+      ? `${kalender} ${focusObj.opening}`
+      : focusObj.opening;
+    const openingMsg: Message = {
+      role: 'model',
+      it: fullOpening,
+      nl: '',
+      insight: kalender ? 'auguri' : 'benvenuto',
+    };
+    setTimeout(() => {
+      setMessages([openingMsg]);
+      speakIt(fullOpening);
+    }, 1200);
+  }, []);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch {
+      setStatus('Camera niet beschikbaar · Fotocamera non disponibile');
+    }
+  };
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isThinking]);
+
+  const getAI = () => new GoogleGenAI({ apiKey: customKey || process.env.GEMINI_API_KEY || "" });
 
   const saveCustomKey = (key: string) => {
-    localStorage.setItem('specchiomagico_api_key', key);
+    localStorage.setItem('rossi_mirror_api_key', key);
     setCustomKey(key);
     setShowKeyModal(false);
-    setStatus('Chiave API salvata! · Gespeichert!');
+    setStatus('Chiave salvata! · Sleutel opgeslagen!');
   };
 
-  const prevMessagesLength = useRef(0);
-  useEffect(() => {
-    if (messages.length > prevMessagesLength.current || isThinking) {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-    prevMessagesLength.current = messages.length;
-  }, [messages.length, isThinking]);
-
-  // ✅ Safari-fix: AudioContext initialiseren of hervatten tijdens een klik
-  const ensureAudioContext = () => {
-    if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-      audioContextRef.current.resume();
-    } else if (!audioContextRef.current) {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-  };
-
-  const toggleCam = async () => {
-    if (isCamOn) {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-        streamRef.current = null;
-      }
-      if (videoRef.current) videoRef.current.srcObject = null;
-      setIsCamOn(false);
-      setStatus('Specchio disattivato · Spiegel deaktiviert');
-    } else {
-      try {
-        setStatus('Avvio fotocamera...');
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          throw new Error("Il browser non supporta la fotocamera.");
-        }
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          setTimeout(() => {
-            videoRef.current?.play().catch(e => console.error("Play error:", e));
-          }, 100);
-        }
-        streamRef.current = stream;
-        setIsCamOn(true);
-        setStatus('Specchio attivo! ✨');
-      } catch (err: any) {
-        console.error("Camera error:", err);
-        setStatus('Accesso alla fotocamera negato.');
-        setIsCamOn(false);
-      }
-    }
-  };
+  const getVoices = (): Promise<SpeechSynthesisVoice[]> =>
+    new Promise(resolve => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length) { resolve(v); return; }
+      window.speechSynthesis.onvoiceschanged = () => resolve(window.speechSynthesis.getVoices());
+      setTimeout(() => resolve(window.speechSynthesis.getVoices()), 1500);
+    });
 
   const speakIt = async (text: string) => {
     if (!text) return;
     setIsSpeaking(true);
-    setStatus('Der Spiegel spricht...');
     try {
       const aiInstance = getAI();
-      const response = await aiInstance.models.generateContent({
-        model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text }] }],
-        config: {
-          responseModalities: [Modality.AUDIO],
-          speechConfig: {
-            voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: "Kore" }
-            }
-          }
-        },
-      });
+      const response = await fetchWithRetry(() =>
+        aiInstance.models.generateContent({
+          model: "gemini-2.5-flash-preview-tts",
+          contents: [{ parts: [{ text }] }],
+          config: {
+            responseModalities: [Modality.AUDIO],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } }
+          },
+        })
+      );
       const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       if (base64Audio) {
-        if (!audioContextRef.current) {
-          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
+        // PCM-aanpak: ruwe Int16 data direct decoderen — klinkt veel natuurlijker dan decodeAudioData
+        const audioCtx = getAudioCtx();
         const binaryString = atob(base64Audio);
         const len = binaryString.length;
         const bytes = new Uint8Array(len);
@@ -144,454 +363,598 @@ export default function App() {
         const int16Data = new Int16Array(bytes.buffer);
         const float32Data = new Float32Array(int16Data.length);
         for (let i = 0; i < int16Data.length; i++) { float32Data[i] = int16Data[i] / 32768.0; }
-        const audioBuffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+        const audioBuffer = audioCtx.createBuffer(1, float32Data.length, 24000);
         audioBuffer.getChannelData(0).set(float32Data);
-        const source = audioContextRef.current.createBufferSource();
+        const source = audioCtx.createBufferSource();
         source.buffer = audioBuffer;
-        source.connect(audioContextRef.current.destination);
-        source.onended = () => { setIsSpeaking(false); setStatus('Druk op 🎤 om te antwoorden · Drücke 🎤 zum Antworten'); };
+        source.connect(audioCtx.destination);
+        source.onended = () => setIsSpeaking(false);
         source.start();
-      } else {
-        throw new Error("No audio data received");
+        return;
       }
-    } catch (err) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'de-DE';
-      utterance.rate = 0.85;
-      utterance.onend = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
-      setStatus('Browser stem gebruikt (fallback)');
+    } catch {
+      // browser TTS fallback
     }
+    window.speechSynthesis.cancel();
+    const voices = await getVoices();
+    const itVoice = voices.find(v => v.lang.startsWith('it-') && v.name.toLowerCase().includes('female'))
+                 || voices.find(v => v.lang.startsWith('it-') && v.name.toLowerCase().includes('woman'))
+                 || voices.find(v => v.lang.startsWith('it-'))
+                 || voices.find(v => v.lang.startsWith('it'))
+                 || voices.find(v => v.name.toLowerCase().includes('female'))
+                 || voices[0];
+    const utt = new SpeechSynthesisUtterance(text);
+    if (itVoice) utt.voice = itVoice;
+    utt.lang = 'it-IT';
+    utt.rate = 0.88;
+    utt.pitch = 1.05;
+    utt.onend = () => setIsSpeaking(false);
+    utt.onerror = () => setIsSpeaking(false);
+    window.speechSynthesis.speak(utt);
   };
 
-  // ✅ Safari-fix: ensureAudioContext bij de microfoonklik
   const startRecording = () => {
-    ensureAudioContext();
-    try {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SpeechRecognition) { setStatus('Spraakherkenning niet ondersteund.'); return; }
-      if (window.speechSynthesis) window.speechSynthesis.cancel();
-      if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.lang = 'de-DE';
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.onstart = () => { setIsRecording(true); setStatus('Luisteren... · Ich höre zu...'); };
-      recognitionRef.current.onresult = (event: any) => { setIsRecording(false); processHeard(event.results[0][0].transcript); };
-      recognitionRef.current.onerror = () => { setIsRecording(false); setStatus('Microfoon fout.'); };
-      recognitionRef.current.onend = () => { setIsRecording(false); };
-      recognitionRef.current.start();
-    } catch (err: any) { setStatus('Microfoon kan niet starten.'); setIsRecording(false); }
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) { setStatus('Microfoon niet ondersteund · Microfono non supportato'); return; }
+    const recognition = new SR();
+    recognitionRef.current = recognition;
+    recognition.lang = 'it-IT';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.onstart = () => { setIsRecording(true); setStatus('Ti ascolto... · Ik luister...'); };
+    recognition.onresult = (e: any) => { processHeard(e.results[0][0].transcript); };
+    recognition.onerror = () => { setIsRecording(false); setStatus('Microfoon fout · Errore microfono'); };
+    recognition.onend = () => setIsRecording(false);
+    recognition.start();
   };
 
-  const stopRecording = () => { recognitionRef.current?.stop(); setIsRecording(false); };
+  const stopRecording = () => {
+    recognitionRef.current?.stop();
+    setIsRecording(false);
+  };
 
   const processHeard = async (heard: string) => {
-    if (!heard.trim()) return;
-    const lastModelMsg = messages.filter(m => m.role === 'model').pop();
-    let currentScore = 0;
-    if (lastModelMsg) {
-      const similarity = calculateSimilarity(lastModelMsg.de, heard);
-      if (similarity > 0.7) currentScore = 2; else if (similarity > 0.4) currentScore = 1;
-      setScore(prev => prev + currentScore);
-    }
-    const userMsg: Message = { role: 'user', de: heard, it: '', heard: heard, score: currentScore };
+    const userMsg: Message = { role: 'user', it: heard, nl: '', insight: 'riflessione' };
     setMessages(prev => [...prev, userMsg]);
+    setScore(prev => prev + 1);
     generateAIResponse([...messages, userMsg]);
   };
 
-  const calculateSimilarity = (s1: string, s2: string) => {
-    const a = s1.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
-    const b = s2.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, "");
-    if (a === b) return 1;
-    if (a.includes(b) || b.includes(a)) return 0.8;
-    return 0.5;
-  };
-
-  // ✅ Nieuwe generateAIResponse met timeout + automatische retry + foutbubbel
-  const generateAIResponse = async (history: Message[], retryCount = 0) => {
+  const generateAIResponse = useCallback(async (history: Message[]) => {
     setIsThinking(true);
-    setStatus(retryCount > 0
-      ? 'Nochmal versuchen... · Even opnieuw...'
-      : 'Der Spiegel denkt nach...'
-    );
-
-    const systemPrompt = `Du bist ein freundlicher Gesprächspartner auf Deutsch — wie ein Zauberspiegel.
-Niveau: ${level}. Aktuelles Thema: ${topic}.
-REGELN: Nur ein kurzer Satz auf Deutsch pro Antwort (max. 12 Wörter). Stelle immer eine Frage am Ende.
-Antworte NUR mit gültigem JSON, ohne Erklärungen oder Markdown: {"de":"deutscher Satz","it":"traduzione italiana"}`;
-
-    // Foutberichten niet meesturen naar de AI
-    const contents = history
-      .filter(m => m.role !== 'error')
-      .map(m => ({
-        role: m.role === 'user' ? 'user' : 'model',
-        parts: [{ text: m.role === 'user'
-          ? m.de
-          : JSON.stringify({ de: m.de, it: m.it }) }]
-      }));
+    const focusObj = FOCUS_OPTIONS.find(f => f.value === focus);
+    const systemInstruction = `${SYSTEM_PROMPT}\nLezione dei Daimon attiva: "${focusObj?.daimon}". Mood della risposta: ${mood}.`;
 
     try {
       const aiInstance = getAI();
+      const contents = history
+        .filter(m => m.role === 'user' || m.role === 'model')
+        .map(m => ({
+          role: m.role === 'user' ? 'user' : 'model',
+          parts: [{ text: m.role === 'user' ? m.it : JSON.stringify({ it: m.it, nl: m.nl }) }]
+        }));
 
-      // Tijdslimiet: 12 seconden. Daarna automatisch retry op sneller model.
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TIMEOUT')), 12000)
-      );
-
-      const responsePromise = aiInstance.models.generateContent({
-        // Eerste poging: gemini-2.5-flash. Retry: gemini-2.0-flash (sneller)
-        model: retryCount > 0 ? "gemini-2.0-flash" : "gemini-2.5-flash",
-        contents: contents.length > 0
-          ? contents
-          : [{ role: 'user', parts: [{ text: 'Beginne das Gespräch.' }] }],
-        config: { systemInstruction: systemPrompt, responseMimeType: "application/json" },
+      let attempt = 0;
+      const result = await fetchWithRetry(async () => {
+        attempt++;
+        const model = attempt === 1 ? "gemini-2.5-flash" : "gemini-2.0-flash";
+        if (attempt === 2) setStatus('Tentativo 2 con modello veloce... · Poging 2 met sneller model...');
+        if (attempt === 3) setStatus('Ultimo tentativo... · Laatste poging...');
+        return aiInstance.models.generateContent({
+          model,
+          contents: contents.length ? contents : [{ role: 'user', parts: [{ text: 'Inizia il dialogo con una frase ispiratrice.' }] }],
+          config: { systemInstruction, responseMimeType: "application/json" },
+        });
       });
 
-      const response = await Promise.race([responsePromise, timeoutPromise]);
-      const data = JSON.parse(response.text || "{}");
+      const raw = result.text || "{}";
+      const data = JSON.parse(raw.replace(/```json|```/g, '').trim());
       const aiMsg: Message = {
         role: 'model',
-        de: data.de || "Hallo!",
-        it: data.it || "Ciao!",
+        it: data.it || '...',
+        nl: data.nl || '...',
+        insight: data.insight || ''
       };
       setMessages(prev => [...prev, aiMsg]);
+      setStatus('Pronto · Klaar');
+      speakIt(aiMsg.it);
+    } catch (err: any) {
       setIsThinking(false);
-      speakIt(aiMsg.de);
-
-    } catch (err) {
-      // Eerste mislukking → stil automatisch herproberenop sneller model
-      if (retryCount === 0) {
-        setStatus('Verbinding traag, even opnieuw...');
-        setTimeout(() => generateAIResponse(history, 1), 2000);
-        return;
+      const isOverload = err?.message?.includes('overloaded') || err?.message?.includes('503');
+      const isTimeout = err?.message?.includes('timeout');
+      let errIt: string, errNl: string, errStatus: string;
+      if (isOverload) {
+        errIt = "Lo specchio è momentaneamente occupato. I server Gemini sono affollati. Riprova tra qualche minuto.";
+        errNl = "De spiegel is even bezet. De Gemini-servers zijn druk. Probeer het over enkele minuten opnieuw.";
+        errStatus = "Server bezet · Server occupato";
+      } else if (isTimeout) {
+        errIt = "La connessione ha impiegato troppo tempo. Il server risponde lentamente. Riprova tra poco.";
+        errNl = "De verbinding duurde te lang. De server reageert traag. Probeer het straks opnieuw.";
+        errStatus = "Verbinding verlopen · Connessione scaduta";
+      } else {
+        errIt = "Connessione persa. Controlla la tua rete o riprova tra un momento.";
+        errNl = "Verbinding verbroken. Controleer je netwerk of probeer het zo opnieuw.";
+        errStatus = "Verbinding verbroken · Connessione persa";
       }
+      setStatus(errStatus);
+      setMessages(prev => [...prev, { role: 'error', it: errIt, nl: errNl, insight: 'pausa' }]);
+      return;
+    }
+    setIsThinking(false);
+  }, [focus, mood, customKey]);
 
-      // Tweede mislukking → toon drietalige foutbubbel (DE + IT + NL) in gespreksveld
-      setIsThinking(false);
-      setStatus('Server überlastet · Server bezet');
-      const errorMsg: Message = { role: 'error', de: '', it: '' };
-      setMessages(prev => [...prev, errorMsg]);
+  const handleReset = () => {
+    setMessages([]);
+    setScore(0);
+    setStatus('Nuovo cammino · Nieuw pad');
+    const focusObj = FOCUS_OPTIONS.find(f => f.value === focus);
+    if (focusObj) {
+      const kalender = getCalendarGreeting();
+      const fullOpening = kalender
+        ? `${kalender} ${focusObj.opening}`
+        : focusObj.opening;
+      setTimeout(() => {
+        const openingMsg: Message = {
+          role: 'model',
+          it: fullOpening,
+          nl: '',
+          insight: kalender ? 'auguri' : 'benvenuto',
+        };
+        setMessages([openingMsg]);
+        speakIt(fullOpening);
+      }, 300);
     }
   };
 
-  // ✅ Safari-fix: ensureAudioContext bij Nuova Conversazione
-  // ✅ Syntaxfout gerepareerd (dubbele accolades en onvolledige structuur in origineel)
-  const startNewConversation = () => {
-    ensureAudioContext();
-    setMessages([]);
-    setScore(0);
-    generateAIResponse([]);
+  const saveTranscript = () => {
+    if (!messages.length) return;
+    const content = messages
+      .filter(m => m.role !== 'error')
+      .map(m => `${m.role === 'model' ? '🪞 Specchio' : '🧑 Io'}: ${m.it}\n   [${m.nl}]`)
+      .join('\n\n');
+    const blob = new Blob(
+      [`Specchio dell'Anima — Percorso\n\n${content}\n\n"Se oggi ti prenderai cura dei tuoi Sogni, domani saranno Loro a prendersi cura di te." — Stefano Rossi`],
+      { type: 'text/plain' }
+    );
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'specchio-anima-percorso.txt';
+    a.click();
   };
 
-  const downloadTranscript = () => {
-    if (messages.length === 0) return;
-    const transcript = messages
-      .filter(m => m.role !== 'error')
-      .map(m => `[${m.role === 'user' ? 'JIJ' : 'SPIEGEL'}]\nDE: ${m.de}\nIT: ${m.it || '-'}\n`)
-      .join('\n---\n\n');
-    const blob = new Blob([transcript], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = `gesprek.txt`;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-  };
+  const focusLabel = FOCUS_OPTIONS.find(f => f.value === focus)?.label || '';
 
   return (
-    <div className="min-h-screen w-full bg-[#080810] text-[#f5f0e8] font-sans selection:bg-[#c9a84c]/30 flex flex-col pb-8">
-      <div className="flex flex-col max-w-md mx-auto w-full px-4 pt-4 relative z-10">
+    <div style={styles.app}>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:.6;transform:scale(1)} 50%{opacity:1;transform:scale(1.04)} }
+        @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+        @keyframes starFloat {
+          0%   { transform: translate(-50%,-50%) scale(1);    opacity: 0.65; }
+          50%  { opacity: 1; }
+          100% { transform: translate(-50%,-50%) scale(1.18); opacity: 0.9; }
+        }
+      `}</style>
 
-        {/* Header */}
-        <header className="text-center pb-4">
-          <motion.h1
-            initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
-            className="font-serif text-3xl font-light tracking-widest text-[#e8c97a] drop-shadow-[0_0_20px_rgba(201,168,76,0.3)]"
-          >
-            Specchio Magico
-          </motion.h1>
-          <a
-            href="#guida"
-            className="text-[0.55rem] tracking-[0.15em] uppercase opacity-40 hover:opacity-80 transition-opacity mt-1 block"
-            style={{ color: 'inherit' }}
-          >
-            Come iniziare · Hoe te beginnen · How to start ↓
-          </a>
-          <p className="text-[0.6rem] tracking-[0.2em] uppercase text-[#c9a84c]/50 mt-1">
-            Il tuo partner tedesco
-          </p>
-        </header>
+      <div style={styles.bgGlow} />
 
-        {/* Mirror */}
-        <div className="relative mx-auto w-full max-w-[200px] aspect-[3/4] mb-5">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#7a5810] via-[#c9a84c] to-[#5a3e08] rounded-[50%_50%_46%_46%_/_28%_28%_72%_72%] p-1.5 shadow-[0_10px_30px_rgba(0,0,0,0.8)]">
-            <div className="w-full h-full bg-[#111128] rounded-[47%_47%_44%_44%_/_26%_26%_74%_74%] overflow-hidden relative">
-              <video
-                ref={videoRef} autoPlay playsInline muted
-                className={`w-full h-full object-cover scale-x-[-1] transition-opacity duration-1000 ${isCamOn ? 'opacity-100' : 'opacity-0'}`}
-              />
-              <AnimatePresence>
-                {!isCamOn && (
-                  <motion.div
-                    initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                    className="absolute inset-0 flex flex-col items-center justify-center text-center p-4"
-                  >
-                    <Sparkles className="w-8 h-8 text-[#c9a84c] mb-2 animate-pulse" />
-                    <small className="text-[#c9a84c]/60 text-[0.6rem] uppercase tracking-wider leading-relaxed">Specchio spento</small>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+      <div style={styles.pageNav}>
+        <button onClick={() => setPage('mirror')}
+          style={{ ...styles.pageNavBtn, ...(page === 'mirror' ? styles.pageNavBtnActive : {}) }}>
+          🪞 Spiegel
+        </button>
+        <button onClick={() => setPage('instructions')}
+          style={{ ...styles.pageNavBtn, ...(page === 'instructions' ? styles.pageNavBtnActive : {}) }}>
+          <BookOpen size={11} style={{ marginRight: 4 }} /> Istruzioni
+        </button>
+      </div>
+
+      {page === 'instructions' && <InstructionsPage onBack={() => setPage('mirror')} />}
+
+      {page === 'mirror' && (
+        <>
+          <header style={styles.header}>
+            <div>
+              <h1 style={styles.title}>Specchio dell'Anima</h1>
+              <p style={styles.subtitle}>Ispirato da Stefano Rossi</p>
             </div>
-          </div>
-          <button
-            type="button" onClick={(e) => { e.preventDefault(); toggleCam(); }}
-            className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-[#080810] border border-[#c9a84c]/30 px-3 py-1.5 rounded-full text-[0.55rem] tracking-widest uppercase text-[#c9a84c]/80 flex flex-col items-center gap-0.5 z-20 w-[130px] text-center"
-          >
-            <div className="flex items-center gap-1.5">
-              {isCamOn ? <CameraOff size={10} /> : <Camera size={10} />}
-              <span>{isCamOn ? 'Spegni Specchio' : 'Accendi Specchio'}</span>
+            <div style={styles.scoreBox}>
+              <span style={styles.scoreNum}>✨ {score}</span>
+              <span style={styles.scoreLabel}>luce interiore</span>
             </div>
-            <span className="text-[0.45rem] opacity-60">{isCamOn ? 'Deaktivieren' : 'Aktivieren'}</span>
-          </button>
-        </div>
+          </header>
 
-        {/* Settings */}
-        <div className="grid grid-cols-2 gap-2 mb-4">
-          <div className="space-y-1">
-            <label className="text-[0.55rem] uppercase tracking-widest text-[#c9a84c]/50 ml-1 flex items-center gap-1">
-              <Settings size={8} /> Livello · Stufe
-            </label>
-            <select
-              value={level} onChange={(e) => setLevel(e.target.value)}
-              className="w-full bg-[#c9a84c]/5 border border-[#c9a84c]/20 rounded-lg px-2 py-2 text-[0.7rem] outline-none text-[#e8c97a]"
-            >
-              <option value="A1">A1 - Principiante</option>
-              <option value="A2">A2 - Elementare</option>
-              <option value="B1">B1 - Intermedio</option>
-              <option value="B2">B2 - Avanzato</option>
-            </select>
-          </div>
-          <div className="space-y-1">
-            <label className="text-[0.55rem] uppercase tracking-widest text-[#c9a84c]/50 ml-1 flex items-center gap-1">
-              <MessageSquare size={8} /> Argomento · Thema
-            </label>
-            <select
-              value={topic} onChange={(e) => setTopic(e.target.value)}
-              className="w-full bg-[#c9a84c]/5 border border-[#c9a84c]/20 rounded-lg px-2 py-2 text-[0.7rem] outline-none text-[#e8c97a]"
-            >
-              <option value="vita quotidiana">Vita Quotidiana</option>
-              <option value="ristorante">Ristorante</option>
-              <option value="viaggi">Viaggi</option>
-              <option value="famiglia">Famiglia</option>
-              <option value="lavoro">Lavoro</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Action Row */}
-        <div className="flex items-center justify-center gap-6 mb-2">
-          <div className="flex flex-col items-center gap-1">
-            <button
-              type="button" onClick={() => messages.length > 0 && speakIt(messages[messages.length-1].de)}
-              className="w-10 h-10 rounded-full bg-[#c9a84c]/10 border border-[#c9a84c]/20 flex items-center justify-center text-[#c9a84c]"
-            >
-              <Volume2 size={16} />
-            </button>
-            <span className="text-[0.5rem] uppercase tracking-widest text-[#c9a84c]/60 text-center leading-tight">
-              Riascolta<br/><span className="text-[#c9a84c]/40">Wiederholen</span>
-            </span>
-          </div>
-
-          <div className="flex flex-col items-center gap-1">
-            <button
-              type="button" onClick={isRecording ? stopRecording : startRecording}
-              className={`w-16 h-16 rounded-full flex items-center justify-center shadow-xl ${
-                isRecording ? 'bg-red-500/20 border-2 border-red-500 animate-pulse' : 'bg-gradient-to-br from-[#c9a84c] to-[#8b6010]'
-              }`}
-            >
-              {isRecording ? <MicOff size={24} className="text-red-500" /> : <Mic size={24} className="text-[#080810]" />}
-            </button>
-            <span className={`text-[0.55rem] uppercase tracking-widest font-bold text-center leading-tight ${isRecording ? 'text-red-500' : 'text-[#c9a84c]'}`}>
-              {isRecording ? <>Luisteren...<br/><span className="opacity-60">Zuhören</span></> : <>Rispondi<br/><span className="opacity-60">Antworten</span></>}
-            </span>
-          </div>
-
-          <div className="flex flex-col items-center gap-1">
-            <button
-              type="button" onClick={() => generateAIResponse(messages)}
-              className="w-10 h-10 rounded-full bg-[#c9a84c]/10 border border-[#c9a84c]/20 flex items-center justify-center text-[#c9a84c]"
-            >
-              <ChevronRight size={16} />
-            </button>
-            <span className="text-[0.5rem] uppercase tracking-widest text-[#c9a84c]/60 text-center leading-tight">
-              Salta<br/><span className="text-[#c9a84c]/40">Überspringen</span>
-            </span>
-          </div>
-        </div>
-
-        <div className="text-center mb-3">
-          <p className="text-[0.65rem] text-[#c9a84c]/60 min-h-[1em] italic font-medium">{status}</p>
-        </div>
-
-        {/* Chat */}
-        <div className="w-full h-[35vh] min-h-[250px] bg-black/30 border border-[#c9a84c]/10 rounded-xl overflow-y-auto p-3 space-y-3 scrollbar-thin mb-4">
-
-          {messages.map((msg, i) => {
-
-            // ✅ Drietalige foutbubbel (Duits + Italiaans + Nederlands)
-            if (msg.role === 'error') {
-              return (
-                <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col items-start">
-                  <div className="w-full px-3 py-3 rounded-xl rounded-bl-none text-[0.72rem] leading-relaxed bg-amber-900/20 border border-amber-500/30 space-y-2">
-
-                    {/* Hoofdmelding Duits */}
-                    <p className="text-amber-300 font-semibold text-[0.75rem]">
-                      ⚠️ Der Zauberspiegel ist momentan überlastet
-                    </p>
-
-                    {/* Uitleg rustige uren Duits */}
-                    <p className="text-amber-200/70">
-                      🕐 Der kostenlose Server ist tagsüber und spät abends am stärksten ausgelastet
-                      (wenn amerikanische Gamer online sind). Die ruhigsten Zeiten zum Üben:
-                      früh morgens oder zwischen 13:00 und 15:00 Uhr.
-                    </p>
-
-                    {/* Oefentip Duits */}
-                    <p className="text-amber-200/70">
-                      🎤 Kein Problem! Klicke auf das Mikrofon, um einen Satz laut vorzulesen,
-                      und auf den Lautsprecher 🔊, um ihn zurückzuhören.
-                      So kannst du trotzdem schon üben!
-                    </p>
-
-                    {/* Italiaanse versie */}
-                    <p className="text-amber-200/50 text-[0.65rem] italic">
-                      🇮🇹 Nessun problema! Clicca sul microfono per leggere una frase
-                      ad alta voce e sull'altoparlante per riascoltarla.
-                      Puoi esercitarti lo stesso!
-                    </p>
-
-                    {/* Opnieuw proberen */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMessages(prev => prev.filter((_, idx) => idx !== i));
-                        generateAIResponse(messages.filter(m => m.role !== 'error'));
-                      }}
-                      className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[0.6rem] uppercase tracking-widest hover:bg-amber-500/30 transition-colors"
-                    >
-                      ↻ Nochmal versuchen · Riprova
-                    </button>
-
+          <div style={styles.mirrorSection}>
+            <div style={styles.mirrorOuter}>
+              <div style={styles.mirrorFrame}>
+                <div style={styles.mirrorInner}>
+                  <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
+                  <div style={styles.mirrorOverlay}>
+                    {!streamRef.current && (
+                      <div style={styles.noCamMsg}>
+                        <FloatingStars />
+                        <span style={styles.noCamText}>Guarda dentro di te</span>
+                      </div>
+                    )}
                   </div>
-                </motion.div>
-              );
-            }
+                  {isSpeaking && <div style={styles.speakingRing} />}
+                </div>
+              </div>
+              <div style={styles.personaBadge}>✦ {focusLabel}</div>
+            </div>
+          </div>
 
-            // Normale berichten — ongewijzigd
-            return (
-              <motion.div key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                <div className={`max-w-[90%] px-3 py-2 rounded-xl text-[0.8rem] leading-relaxed ${
-                  msg.role === 'user'
-                    ? 'bg-white/5 border border-white/10 rounded-br-none italic text-white/80'
-                    : 'bg-gradient-to-br from-[#c9a84c]/10 to-[#c9a84c]/5 border border-[#c9a84c]/20 rounded-bl-none'
-                }`}>
+          <div style={styles.quoteBlock}>
+            <p style={styles.quoteText}>
+              "Se oggi ti prenderai cura dei tuoi Sogni,<br />
+              domani saranno Loro a prendersi cura di te."
+            </p>
+            <p style={styles.quoteAuthor}>— Stefano Rossi —</p>
+          </div>
+
+          <div style={styles.selectRow}>
+            <div style={styles.selectGroup}>
+              <label style={styles.selectLabel}>
+                <Lightbulb size={10} style={{ marginRight: 4 }} /> Focus · Daimon
+              </label>
+              <select value={focus} onChange={e => setFocus(e.target.value)} style={styles.select}>
+                {FOCUS_OPTIONS.map(f => (
+                  <option key={f.value} value={f.value}>{f.label}</option>
+                ))}
+              </select>
+            </div>
+            <div style={styles.selectGroup}>
+              {/* GEWIJZIGD: "Mood della Risposta" → "Mood Risposta" voor betere uitlijning */}
+              <label style={styles.selectLabel}>
+                <Heart size={10} style={{ marginRight: 4 }} /> Mood Risposta
+              </label>
+              <select value={mood} onChange={e => setMood(e.target.value)} style={styles.select}>
+                <option value="riflessivo">Riflessivo</option>
+                <option value="coraggioso">Coraggioso</option>
+                <option value="gentile">Gentile</option>
+                <option value="poetico">Poetico</option>
+                <option value="diretto">Diretto</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={styles.chatBox}>
+            {messages.length === 0 && (
+              <div style={styles.chatEmpty}>
+                <p style={styles.chatEmptyText}>Parla allo specchio... · Spreek tot de spiegel...</p>
+              </div>
+            )}
+            {messages.map((msg, i) => (
+              <motion.div key={i}
+                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start', marginBottom: 10 }}
+              >
+                <div style={msg.role === 'user' ? styles.bubbleUser : msg.role === 'error' ? styles.bubbleError : styles.bubbleModel}>
                   {msg.role === 'model' ? (
                     <>
-                      <span className="font-serif italic text-base text-[#e8c97a] block mb-0.5">{msg.de}</span>
-                      <span className="text-[0.65rem] text-white/40 block leading-tight">{msg.it}</span>
+                      <span style={styles.bubbleIt}>{msg.it}</span>
+                      {msg.insight && <span style={styles.bubbleInsight}>· {msg.insight} ·</span>}
+                      {msg.nl && <span style={styles.bubbleNl}>{msg.nl}</span>}
+                      <button
+                        onClick={() => speakIt(msg.it)}
+                        title="Voorlezen · Leggi ad alta voce"
+                        style={{
+                          alignSelf: 'flex-end', marginTop: 4,
+                          background: 'none', border: 'none',
+                          cursor: 'pointer', fontSize: 15, opacity: 0.55,
+                          padding: '2px 4px', lineHeight: 1,
+                        }}
+                      >🔊</button>
+                    </>
+                  ) : msg.role === 'error' ? (
+                    <>
+                      <span style={styles.bubbleErrorIt}>⚠️ {msg.it}</span>
+                      <span style={styles.bubbleNl}>{msg.nl}</span>
                     </>
                   ) : (
                     <>
-                      <span>{msg.de}</span>
-                      {msg.score !== undefined && (
-                        <div className={`mt-1.5 text-[0.55rem] font-bold uppercase px-1.5 py-0.5 rounded-sm inline-block ${
-                          msg.score === 2 ? 'bg-green-500/10 text-green-400'
-                          : msg.score === 1 ? 'bg-yellow-500/10 text-yellow-400'
-                          : 'bg-red-500/10 text-red-400'
-                        }`}>
-                          {msg.score === 2 ? '✓ Sehr gut!' : msg.score === 1 ? '~ Fast!' : '↻ Nochmal'}
-                        </div>
-                      )}
+                      <span style={{ fontSize: 14 }}>{msg.it}</span>
+                      {msg.nl && <span style={styles.bubbleNl}>{msg.nl}</span>}
                     </>
                   )}
                 </div>
               </motion.div>
-            );
-          })}
-
-          {isThinking && (
-            <div className="flex gap-1.5 p-2 bg-[#c9a84c]/5 border border-[#c9a84c]/10 rounded-xl rounded-bl-none w-12">
-              <div className="w-1 h-1 bg-[#c9a84c] rounded-full animate-bounce" />
-              <div className="w-1 h-1 bg-[#c9a84c] rounded-full animate-bounce [animation-delay:0.2s]" />
-              <div className="w-1 h-1 bg-[#c9a84c] rounded-full animate-bounce [animation-delay:0.4s]" />
-            </div>
-          )}
-          <div ref={chatEndRef} />
-        </div>
-
-        {/* Onderaan */}
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center justify-between border-b border-[#c9a84c]/10 pb-3">
-            <div className="flex items-center gap-1.5 text-[#c9a84c]/60 text-[0.6rem] uppercase tracking-widest">
-              <Trophy size={12} /> Punteggio · Punkte
-            </div>
-            <div className="text-[#c9a84c] font-bold text-lg">⭐ {score}</div>
+            ))}
+            {isThinking && (
+              <div style={styles.thinkingRow}>
+                {[0, 200, 400].map((d, i) => (
+                  <div key={i} style={{ ...styles.thinkingDot, animationDelay: `${d}ms` }} />
+                ))}
+              </div>
+            )}
+            <div ref={chatEndRef} />
           </div>
 
-          <button
-            type="button" onClick={startNewConversation}
-            className="w-full py-3 border border-[#c9a84c]/30 bg-[#c9a84c]/5 rounded-xl text-[0.7rem] tracking-[0.2em] uppercase text-[#c9a84c] hover:bg-[#c9a84c]/10 flex flex-col items-center justify-center gap-1"
-          >
-            <div className="flex items-center gap-2"><RotateCcw size={14} /> Nuova Conversazione</div>
-            <span className="text-[0.55rem] opacity-60">Neues Gespräch</span>
+          <p style={styles.statusText}>{status}</p>
+
+          <div style={styles.controls}>
+            <button onClick={handleReset} style={styles.btnSec} title="Opnieuw beginnen">
+              <RotateCcw size={18} />
+            </button>
+            <button
+              onMouseDown={startRecording}
+              onMouseUp={stopRecording}
+              onTouchStart={startRecording}
+              onTouchEnd={stopRecording}
+              style={{ ...styles.btnMic, ...(isRecording ? styles.btnMicActive : {}) }}
+            >
+              {isRecording ? <MicOff size={28} color="#fff" /> : <Mic size={28} color="#05050a" />}
+            </button>
+            <button onClick={saveTranscript} style={styles.btnSec} title="Sla percorso op">
+              <Save size={18} />
+            </button>
+          </div>
+
+          <button onClick={() => setShowKeyModal(true)} style={styles.btnKey}>
+            <Key size={10} style={{ marginRight: 4 }} /> Configura API Key
           </button>
-
-          <div className="flex gap-2">
-            <button
-              type="button" onClick={downloadTranscript}
-              className="flex-1 py-2 border border-[#c9a84c]/10 rounded-lg text-[0.6rem] tracking-widests uppercase text-[#c9a84c]/60 hover:text-[#c9a84c] flex flex-col items-center gap-0.5"
-            >
-              <div className="flex items-center gap-1"><Save size={12} /> Salva</div>
-              <span className="text-[0.45rem] opacity-60">Speichern</span>
-            </button>
-            <button
-              type="button" onClick={() => setShowKeyModal(true)}
-              className="px-4 py-2 border border-[#c9a84c]/10 rounded-lg text-[0.6rem] text-[#c9a84c]/60 hover:text-[#c9a84c] flex flex-col items-center gap-0.5"
-            >
-              <Key size={12} />
-              <span className="text-[0.45rem] opacity-60 uppercase tracking-widest">API</span>
-            </button>
-          </div>
-        </div>
-      </div>
+        </>
+      )}
 
       <AnimatePresence>
         {showKeyModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-[#12122a] border border-[#c9a84c]/30 p-6 rounded-2xl w-full max-w-xs shadow-2xl">
-              <h2 className="font-serif text-xl text-[#e8c97a] mb-2 text-center">API Key</h2>
-              <input type="password" defaultValue={customKey} id="keyInput" className="w-full bg-black/40 border border-[#c9a84c]/20 rounded-lg px-4 py-2.5 text-sm mb-4 outline-none text-white" />
-              <div className="flex gap-2">
-                <button onClick={() => setShowKeyModal(false)} className="flex-1 py-2 text-xs text-[#c9a84c]/50 border border-transparent rounded-lg">Annulla</button>
-                <button onClick={() => { saveCustomKey((document.getElementById('keyInput') as HTMLInputElement).value); }} className="flex-1 py-2 bg-gradient-to-r from-[#c9a84c] to-[#8b6010] rounded-lg text-[#080810] text-xs font-bold">Salva</button>
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            style={styles.modal}
+          >
+            <div style={styles.modalBox}>
+              <h2 style={styles.modalTitle}>Gemini API Key</h2>
+              <p style={styles.modalHint}>Gratis sleutel: aistudio.google.com</p>
+              <input
+                type="password"
+                defaultValue={customKey}
+                id="keyInput"
+                style={styles.modalInput}
+                placeholder="Inserisci la tua chiave..."
+              />
+              <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                <button onClick={() => setShowKeyModal(false)} style={styles.modalBtnCancel}>Annulla</button>
+                <button
+                  onClick={() => saveCustomKey((document.getElementById('keyInput') as HTMLInputElement).value)}
+                  style={styles.modalBtnSave}
+                >Salva</button>
               </div>
-            </motion.div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
-      <GuidaSection accentColor="#c9a84c" />
-      <div style={{
-        textAlign: 'center',
-        padding: '1.5rem 1rem 2rem',
-        fontSize: '0.72rem',
-        lineHeight: 1.8,
-        color: 'white',
-        opacity: 0.85,
-      }}>
-        🇮🇹 Questa app è gratuita. Se la usi spesso, ti consigliamo di creare la tua chiave API personale — è facile e gratuita su aistudio.google.com.<br /><br />
-        🇳🇱 Deze app is gratis. Gebruik je hem regelmatig, maak dan je eigen API-sleutel aan — eenvoudig en gratis via aistudio.google.com.<br /><br />
-        🇬🇧 This app is free to use. If you use it regularly, we recommend creating your own API key — quick and free at aistudio.google.com.
-      </div>
     </div>
   );
 }
+
+// ── Styles ────────────────────────────────────────────────────────────────
+const C = {
+  bg: '#05050a',
+  blue: '#70a1ff',
+  blueDim: 'rgba(112,161,255,0.15)',
+  blueBorder: 'rgba(112,161,255,0.25)',
+  text: '#e0e0f0',
+  dim: 'rgba(255,255,255,0.45)',
+};
+
+const styles: Record<string, React.CSSProperties> = {
+  app: {
+    minHeight: '100vh', background: C.bg, color: C.text,
+    fontFamily: "'Georgia', serif",
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
+    padding: '0 0 30px', position: 'relative', overflow: 'hidden',
+  },
+  bgGlow: {
+    position: 'fixed', inset: 0,
+    background: 'radial-gradient(ellipse at 50% 30%, rgba(30,55,153,0.25) 0%, transparent 70%)',
+    pointerEvents: 'none',
+  },
+  pageNav: {
+    width: '100%', maxWidth: 480,
+    display: 'flex', gap: 6, padding: '10px 16px 4px', zIndex: 10,
+  },
+  pageNavBtn: {
+    flex: 1, padding: '7px 0',
+    background: 'rgba(112,161,255,0.05)', border: '1px solid rgba(112,161,255,0.15)',
+    borderRadius: 20, fontSize: 11, color: 'rgba(112,161,255,0.5)', cursor: 'pointer',
+    letterSpacing: '0.08em', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    transition: 'all 0.2s',
+  },
+  pageNavBtnActive: {
+    background: C.blueDim, border: `1px solid ${C.blueBorder}`, color: C.blue, fontWeight: 600,
+  },
+  instrPage: {
+    width: '100%', maxWidth: 480, padding: '10px 16px 20px',
+    display: 'flex', flexDirection: 'column', gap: 0, zIndex: 1,
+  },
+  instrLangRow: { display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' as const },
+  instrLangBtn: {
+    padding: '5px 12px', borderRadius: 20, border: '1px solid rgba(112,161,255,0.2)',
+    background: 'transparent', color: 'rgba(112,161,255,0.5)',
+    fontSize: 11, cursor: 'pointer', letterSpacing: '0.05em', transition: 'all 0.2s',
+  },
+  instrLangBtnActive: {
+    background: C.blueDim, border: `1px solid ${C.blueBorder}`, color: C.blue, fontWeight: 600,
+  },
+  instrTitle: { margin: '0 0 12px', fontSize: 17, fontWeight: 400, color: C.blue, letterSpacing: '0.1em' },
+  daimonBox: {
+    background: 'rgba(112,161,255,0.06)', border: '1px solid rgba(112,161,255,0.2)',
+    borderRadius: 12, padding: '12px 16px', marginBottom: 14,
+  },
+  daimonTitle: {
+    margin: '0 0 8px', fontSize: 11, color: C.blue,
+    letterSpacing: '0.15em', textTransform: 'uppercase' as const,
+  },
+  daimonItem: { margin: '3px 0', fontSize: 11, color: 'rgba(224,224,240,0.7)', lineHeight: 1.5 },
+  daimonNum: { color: C.blue, fontWeight: 600 },
+  instrSteps: { display: 'flex', flexDirection: 'column' as const, gap: 8, marginBottom: 16 },
+  instrStep: {
+    display: 'flex', gap: 10, alignItems: 'flex-start',
+    background: C.blueDim, border: `1px solid ${C.blueBorder}`,
+    borderRadius: 10, padding: '9px 12px',
+  },
+  instrStepHighlight: { background: 'rgba(255,210,80,0.08)', border: '1px solid rgba(255,210,80,0.35)' },
+  instrStepIcon: { fontSize: 15, flexShrink: 0, marginTop: 1 },
+  instrStepText: { fontSize: 12, color: 'rgba(224,224,240,0.85)', lineHeight: 1.6, letterSpacing: '0.02em' },
+  instrStepTextHighlight: { color: 'rgba(255,230,140,0.95)' },
+  instrFreeKey: {
+    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
+    background: 'rgba(112,161,255,0.07)', border: '1px dashed rgba(112,161,255,0.25)',
+    borderRadius: 10, marginTop: 4,
+  },
+  instrLinkText: { color: C.blue, fontSize: 12, letterSpacing: '0.03em' },
+  header: {
+    width: '100%', maxWidth: 480, display: 'flex', alignItems: 'center',
+    justifyContent: 'space-between', padding: '10px 16px', zIndex: 1,
+  },
+  title: { margin: 0, fontSize: 20, fontWeight: 300, color: C.blue, letterSpacing: '0.15em' },
+  subtitle: { margin: 0, fontSize: 10, color: 'rgba(112,161,255,0.5)', letterSpacing: '0.2em', textTransform: 'uppercase' },
+  scoreBox: {
+    textAlign: 'center', background: C.blueDim,
+    borderRadius: 10, padding: '6px 12px', border: `1px solid ${C.blueBorder}`,
+  },
+  scoreNum: { display: 'block', fontSize: 18, fontWeight: 700, color: C.blue },
+  scoreLabel: { fontSize: 9, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.1em' },
+  mirrorSection: { margin: '6px 0', zIndex: 1 },
+  mirrorOuter: { display: 'flex', flexDirection: 'column', alignItems: 'center' },
+  mirrorFrame: {
+    width: 200, height: 250, borderRadius: '50% 50% 48% 48%',
+    border: `6px solid ${C.blue}`,
+    boxShadow: `0 0 40px rgba(112,161,255,0.4), inset 0 0 20px rgba(0,0,0,0.4)`,
+    overflow: 'hidden', background: '#060620', position: 'relative',
+  },
+  mirrorInner: { width: '100%', height: '100%', position: 'relative' },
+  video: { width: '100%', height: '100%', objectFit: 'cover', transform: 'scaleX(-1)' },
+  mirrorOverlay: {
+    position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', pointerEvents: 'none',
+  },
+  noCamMsg: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 },
+  noCamText: {
+    fontSize: 10, color: 'rgba(112,161,255,0.4)',
+    textTransform: 'uppercase', letterSpacing: '0.15em', textAlign: 'center',
+  },
+  speakingRing: {
+    position: 'absolute', inset: -6, borderRadius: '50%',
+    border: `3px solid ${C.blue}`, animation: 'pulse 1.2s ease-in-out infinite', pointerEvents: 'none',
+  },
+  personaBadge: {
+    marginTop: 10, background: C.blueDim, border: `1px solid ${C.blueBorder}`,
+    borderRadius: 20, padding: '4px 18px', fontSize: 11, color: C.blue,
+    letterSpacing: '0.08em', maxWidth: 260, textAlign: 'center',
+  },
+  quoteBlock: {
+    width: '100%', maxWidth: 480, padding: '12px 24px', margin: '8px 0 4px',
+    borderTop: `1px solid ${C.blueBorder}`, borderBottom: `1px solid ${C.blueBorder}`,
+    background: 'rgba(112,161,255,0.04)', textAlign: 'center', zIndex: 1,
+  },
+  quoteText: {
+    margin: 0, fontSize: 12, lineHeight: 1.7,
+    color: 'rgba(112,161,255,0.75)', fontStyle: 'italic', letterSpacing: '0.02em',
+  },
+  quoteAuthor: {
+    margin: '6px 0 0', fontSize: 10,
+    color: 'rgba(112,161,255,0.4)', letterSpacing: '0.2em', textTransform: 'uppercase',
+  },
+  selectRow: {
+    width: '100%', maxWidth: 480, display: 'grid', gridTemplateColumns: '1fr 1fr',
+    gap: 10, padding: '10px 16px', zIndex: 1,
+  },
+  selectGroup: { display: 'flex', flexDirection: 'column', gap: 4 },
+  selectLabel: {
+    fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.2em',
+    color: 'rgba(112,161,255,0.6)', display: 'flex', alignItems: 'center',
+  },
+  select: {
+    background: 'rgba(255,255,255,0.05)', border: `1px solid ${C.blueBorder}`,
+    borderRadius: 8, padding: '7px 10px', fontSize: 11, color: C.blue, outline: 'none',
+  },
+  chatBox: {
+    width: '100%', maxWidth: 480, maxHeight: 190, overflowY: 'auto',
+    padding: '0 12px', zIndex: 1,
+  },
+  chatEmpty: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: 60 },
+  chatEmptyText: { fontSize: 11, color: 'rgba(112,161,255,0.3)', fontStyle: 'italic', letterSpacing: '0.05em' },
+  bubbleModel: {
+    background: C.blueDim, border: `1px solid ${C.blueBorder}`,
+    borderRadius: '18px 18px 18px 4px', padding: '10px 14px', maxWidth: '82%',
+    display: 'flex', flexDirection: 'column', gap: 4,
+  },
+  bubbleUser: {
+    background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)',
+    borderRadius: '18px 18px 4px 18px', padding: '10px 14px', maxWidth: '82%',
+    fontSize: 14, color: 'rgba(255,255,255,0.7)', fontStyle: 'italic',
+  },
+  bubbleError: {
+    background: 'rgba(200,50,50,0.12)', border: '1px solid rgba(200,50,50,0.25)',
+    borderRadius: '18px 18px 18px 4px', padding: '10px 14px', maxWidth: '92%',
+    display: 'flex', flexDirection: 'column', gap: 6,
+  },
+  bubbleErrorIt: { fontSize: 13, color: '#ffaaaa', lineHeight: 1.55 },
+  bubbleIt: { fontSize: 15, color: C.blue, fontStyle: 'normal', lineHeight: 1.5 },
+  bubbleInsight: { fontSize: 10, color: 'rgba(112,161,255,0.4)', letterSpacing: '0.15em', textTransform: 'uppercase' },
+  bubbleNl: { fontSize: 11, color: C.dim, fontStyle: 'italic', borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 4, marginTop: 2 },
+  thinkingRow: { display: 'flex', gap: 6, padding: '8px 14px' },
+  thinkingDot: { width: 6, height: 6, borderRadius: '50%', background: C.blue, animation: 'bounce 1s infinite' },
+  statusText: {
+    fontSize: 11, color: 'rgba(112,161,255,0.6)',
+    fontStyle: 'italic', margin: '4px 0', zIndex: 1, textAlign: 'center',
+  },
+  controls: { display: 'flex', alignItems: 'center', gap: 22, marginTop: 8, zIndex: 1 },
+  btnMic: {
+    width: 68, height: 68, borderRadius: '50%',
+    border: `3px solid ${C.blue}`, background: C.blue, fontSize: 28,
+    cursor: 'pointer', transition: 'all 0.2s',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    boxShadow: '0 0 20px rgba(112,161,255,0.4)',
+  },
+  btnMicActive: {
+    background: 'rgba(200,50,50,0.8)', border: '3px solid #e74c3c',
+    transform: 'scale(1.1)', boxShadow: '0 0 20px rgba(231,76,60,0.5)',
+  },
+  btnSec: {
+    width: 46, height: 46, borderRadius: '50%',
+    border: `2px solid ${C.blueBorder}`, background: 'rgba(0,0,0,0.4)',
+    cursor: 'pointer', color: C.blue,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+  },
+  btnKey: {
+    marginTop: 12, padding: '6px 16px', background: 'transparent',
+    border: '1px solid rgba(112,161,255,0.15)', borderRadius: 20,
+    fontSize: 10, color: 'rgba(112,161,255,0.35)',
+    textTransform: 'uppercase', letterSpacing: '0.15em', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', zIndex: 1,
+  },
+  modal: {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100,
+  },
+  modalBox: {
+    background: '#0c1a3a', border: `2px solid ${C.blue}`,
+    borderRadius: 20, padding: 28, maxWidth: 300, width: '90%',
+  },
+  modalTitle: {
+    margin: '0 0 4px', fontWeight: 300, fontSize: 20,
+    color: C.blue, textAlign: 'center', letterSpacing: '0.1em',
+  },
+  modalHint: {
+    margin: '0 0 16px', fontSize: 11,
+    color: 'rgba(112,161,255,0.5)', textAlign: 'center', letterSpacing: '0.04em',
+  },
+  modalInput: {
+    width: '100%', boxSizing: 'border-box',
+    background: 'rgba(0,0,0,0.4)', border: `1px solid ${C.blueBorder}`,
+    borderRadius: 10, padding: '10px 14px',
+    fontSize: 14, color: 'white', outline: 'none', textAlign: 'center',
+  },
+  modalBtnCancel: {
+    flex: 1, padding: '10px', background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10,
+    color: 'rgba(255,255,255,0.4)', cursor: 'pointer', fontSize: 12,
+  },
+  modalBtnSave: {
+    flex: 1, padding: '10px', background: C.blue, border: 'none',
+    borderRadius: 10, color: C.bg, fontWeight: 700, cursor: 'pointer',
+    fontSize: 12, letterSpacing: '0.1em',
+  },
+};
