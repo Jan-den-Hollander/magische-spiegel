@@ -1,6 +1,6 @@
 /**
  * Magische Spiegel — Verjaardagsspiegel voor Kinderen
- * Efteling / Anton Piek stijl  ·  v5
+ * Efteling / Anton Piek stijl  ·  v6
  * Wijzigingen v5:
  *  - OrnateFrame vervangen door rozenkrans: groene rank, rozen in bloei, knoppen en bladeren langs ellips
  * Wijzigingen v4:
@@ -92,137 +92,160 @@ Antwoord ALLEEN als JSON zonder markdown:
 {"nl":"...","en":"...","fr":"...","de":"...","facts":[{"year":1984,"nl":"...","en":"...","fr":"...","de":"..."}]}`;
 };
 
-// ── Ornate spiegellijst SVG v5 — rozenkrans ──────────────────────────────
-// Helpers: blad, knop, bloem langs een ellipsbaan
+// ── Ornate spiegellijst SVG v6 — botanische rozenkrans ───────────────────
+
 function ptOnEllipse(cx, cy, rx, ry, angleDeg) {
   const a = (angleDeg - 90) * Math.PI / 180;
   return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)];
 }
 
-// Eén volledig openstaande roos (bovenaanzicht), schaal s, rotatie r
-function Rose({ x, y, s = 1, r = 0, bloom = true }) {
-  // Buitenste kroonbladen
-  const outerPetals = bloom ? [0,60,120,180,240,300] : [0,72,144,216,288];
-  const innerPetals = bloom ? [30,90,150,210,270,330] : [36,108,180,252,324];
+// Realistisch blad met nerf, glans, schaduw
+function RoseLeaf({ x, y, sc = 1, rot = 0 }) {
   return (
-    <g transform={`translate(${x},${y}) rotate(${r}) scale(${s})`}>
-      {/* Kelkblaadjes */}
-      {[0,72,144,216,288].map((a,i) => {
-        const rad = (a - 90) * Math.PI / 180;
-        const ex = Math.cos(rad)*11, ey = Math.sin(rad)*11;
-        return (
-          <ellipse key={`sep${i}`}
-            cx={ex*0.5} cy={ey*0.5}
-            rx={2.2} ry={5}
-            transform={`rotate(${a}, ${ex*0.5}, ${ey*0.5})`}
-            fill="#2d6e1a" opacity="0.85"/>
-        );
-      })}
-      {/* Buitenste kroonbladen */}
-      {outerPetals.map((a,i) => {
-        const rad = (a - 90) * Math.PI / 180;
-        const ex = Math.cos(rad)*9, ey = Math.sin(rad)*9;
-        return (
-          <ellipse key={`op${i}`}
-            cx={ex} cy={ey}
-            rx={bloom ? 4.5 : 3.8} ry={bloom ? 6.5 : 5.5}
-            transform={`rotate(${a}, ${ex}, ${ey})`}
-            fill={bloom ? '#c0253a' : '#8b1c2e'}
-            opacity="0.92"/>
-        );
-      })}
-      {/* Binnenste kroonbladen */}
-      {innerPetals.map((a,i) => {
-        const rad = (a - 90) * Math.PI / 180;
-        const ex = Math.cos(rad)*5.5, ey = Math.sin(rad)*5.5;
-        return (
-          <ellipse key={`ip${i}`}
-            cx={ex} cy={ey}
-            rx={bloom ? 3.5 : 2.8} ry={bloom ? 5 : 4}
-            transform={`rotate(${a}, ${ex}, ${ey})`}
-            fill={bloom ? '#e03050' : '#a02035'}
-            opacity="0.96"/>
-        );
-      })}
-      {/* Hartje */}
-      <circle r={bloom ? 3.2 : 2.5} fill={bloom ? '#f5a0b0' : '#c05070'} opacity="0.9"/>
-      <circle r={bloom ? 1.5 : 1.2} fill="#ffe0e8" opacity="0.7"/>
+    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
+      {/* Schaduwlaag */}
+      <path d="M0,0 C4,-6 7,-14 4,-22 C1,-28 -5,-24 -6,-16 C-7,-8 -4,-3 0,0Z"
+        fill="#1a4a0a" opacity="0.5"/>
+      {/* Hoofdblad */}
+      <path d="M0,0 C5,-5 8,-13 5,-21 C2,-27 -4,-23 -5,-15 C-6,-7 -3,-2 0,0Z"
+        fill="#2e7d1a"/>
+      {/* Lichtreflectie */}
+      <path d="M0,-2 C3,-7 5,-13 3,-19 C2,-22 0,-20 0,-16 C0,-11 0,-6 0,-2Z"
+        fill="#4caa28" opacity="0.55"/>
+      {/* Nerf */}
+      <path d="M0,-1 C-1,-7 -2,-14 -3,-20" fill="none" stroke="#1a5a0a" strokeWidth="0.6" opacity="0.7"/>
+      <path d="M-1,-8 C-3,-9 -4,-8 -5,-7" fill="none" stroke="#1a5a0a" strokeWidth="0.4" opacity="0.5"/>
+      <path d="M-2,-14 C-4,-15 -4,-13 -5,-12" fill="none" stroke="#1a5a0a" strokeWidth="0.4" opacity="0.5"/>
     </g>
   );
 }
 
-// Eén knop (gesloten roos)
-function Bud({ x, y, s = 1, r = 0 }) {
+// Realistisch rozenknoopje — zijaanzicht, geslotenheid
+function RoseBud({ x, y, sc = 1, rot = 0 }) {
   return (
-    <g transform={`translate(${x},${y}) rotate(${r}) scale(${s})`}>
+    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
       {/* Steeltje */}
-      <line x1={0} y1={0} x2={0} y2={9} stroke="#2d6e1a" strokeWidth="1.4"/>
-      {/* Kelkblaadjes */}
-      {[-30,0,30].map((a,i) => (
-        <ellipse key={i} cx={0} cy={2}
-          rx={1.8} ry={4.5}
-          transform={`rotate(${a},0,2)`}
-          fill="#2d6e1a" opacity="0.9"/>
-      ))}
-      {/* Knopje */}
-      <ellipse cx={0} cy={-3} rx={3.5} ry={5} fill="#c0253a" opacity="0.92"/>
-      <ellipse cx={0} cy={-4} rx={2} ry={3} fill="#e03050" opacity="0.88"/>
+      <path d="M0,8 C0,5 1,2 0,0" fill="none" stroke="#2a6614" strokeWidth="1.6"/>
+      {/* Kelkblaadje links */}
+      <path d="M0,2 C-3,0 -5,-2 -4,-6 C-3,-8 -1,-7 0,-5Z"
+        fill="#2e7d1a"/>
+      {/* Kelkblaadje rechts */}
+      <path d="M0,2 C3,0 5,-2 4,-6 C3,-8 1,-7 0,-5Z"
+        fill="#2e7d1a"/>
+      {/* Knop achterste blad */}
+      <path d="M-3,-5 C-4,-10 -3,-15 0,-17 C3,-15 4,-10 3,-5Z"
+        fill="#9b1c30"/>
+      {/* Knop voorste blad */}
+      <path d="M-2,-6 C-3,-11 -1,-15 0,-16 C1,-15 3,-11 2,-6Z"
+        fill="#c42840"/>
+      {/* Knop middenste blad */}
+      <path d="M-1,-8 C-1,-13 0,-15 0,-15 C0,-15 1,-13 1,-8Z"
+        fill="#e0405a"/>
+      {/* Glans */}
+      <path d="M-1,-10 C-1,-13 0,-14 0,-14 C-0.5,-13 -0.5,-11 -1,-10Z"
+        fill="#f8a0b0" opacity="0.6"/>
     </g>
   );
 }
 
-// Blad
-function Leaf({ x, y, s = 1, r = 0, flip = false }) {
-  const sx = flip ? -1 : 1;
+// Realistische roos — zij/kwart-aanzicht met uitwaaiende kroonbladen
+function RoseBloom({ x, y, sc = 1, rot = 0 }) {
   return (
-    <g transform={`translate(${x},${y}) rotate(${r}) scale(${sx * s},${s})`}>
-      <path d="M0,0 Q6,-10 0,-20 Q-6,-10 0,0"
-        fill="#3a8a20" opacity="0.88"/>
-      <path d="M0,-3 Q1,-10 0,-18" fill="none" stroke="#2d6e1a" strokeWidth="0.7" opacity="0.6"/>
+    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
+      {/* Drop-shadow */}
+      <ellipse cx={1} cy={2} rx={11} ry={8} fill="rgba(0,0,0,0.28)" filter="url(#rBlur)"/>
+
+      {/* ── Buitenste kroonbladen (5 stuks, breed uitgespreid) ── */}
+      {/* Blad achter-links */}
+      <path d="M0,0 C-8,-2 -14,-6 -13,-13 C-12,-19 -6,-18 -3,-13 C-1,-9 0,-4 0,0Z"
+        fill="#8b1528"/>
+      {/* Blad achter-rechts */}
+      <path d="M0,0 C8,-2 14,-6 13,-13 C12,-19 6,-18 3,-13 C1,-9 0,-4 0,0Z"
+        fill="#8b1528"/>
+      {/* Blad achter-midden */}
+      <path d="M0,0 C-3,-5 -3,-12 0,-16 C3,-12 3,-5 0,0Z"
+        fill="#7a1020"/>
+      {/* Blad voor-links */}
+      <path d="M0,0 C-10,2 -16,0 -15,-7 C-14,-13 -7,-12 -4,-7 C-2,-4 0,-1 0,0Z"
+        fill="#b82038"/>
+      {/* Blad voor-rechts */}
+      <path d="M0,0 C10,2 16,0 15,-7 C14,-13 7,-12 4,-7 C2,-4 0,-1 0,0Z"
+        fill="#b82038"/>
+
+      {/* ── Middelste ring (3 kroonbladen) ── */}
+      <path d="M0,0 C-6,-1 -10,-5 -9,-10 C-8,-14 -4,-13 -2,-9 C-1,-6 0,-2 0,0Z"
+        fill="#d42845"/>
+      <path d="M0,0 C6,-1 10,-5 9,-10 C8,-14 4,-13 2,-9 C1,-6 0,-2 0,0Z"
+        fill="#d42845"/>
+      <path d="M0,0 C-2,-4 -2,-9 0,-12 C2,-9 2,-4 0,0Z"
+        fill="#c02040"/>
+
+      {/* ── Binnenste spiraal ── */}
+      <path d="M0,0 C-4,0 -6,-3 -5,-7 C-4,-10 -2,-9 -1,-6 C0,-4 0,-1 0,0Z"
+        fill="#e83858"/>
+      <path d="M0,0 C4,0 6,-3 5,-7 C4,-10 2,-9 1,-6 C0,-4 0,-1 0,0Z"
+        fill="#e83858"/>
+      {/* Hartje */}
+      <path d="M0,-1 C-2,-2 -3,-5 -2,-7 C-1,-8 0,-7 0,-5 C0,-7 1,-8 2,-7 C3,-5 2,-2 0,-1Z"
+        fill="#f06080"/>
+      {/* Glans lichtpuntje */}
+      <ellipse cx={-2} cy={-6} rx={1.5} ry={1} fill="white" opacity="0.35" transform="rotate(-20,-2,-6)"/>
+      <ellipse cx={2} cy={-8} rx={0.8} ry={0.5} fill="white" opacity="0.25"/>
+
+      {/* ── Kelkblaadjes onderin ── */}
+      <path d="M0,0 C-3,2 -6,4 -7,2 C-8,0 -6,-2 -3,-1Z" fill="#2e7d1a"/>
+      <path d="M0,0 C3,2 6,4 7,2 C8,0 6,-2 3,-1Z"        fill="#2e7d1a"/>
+      <path d="M0,0 C0,3 -1,6 -2,5 C-3,4 -2,2 0,0Z"      fill="#3a8a20"/>
     </g>
   );
 }
 
 function OrnateFrame({ W = 270, H = 330 }) {
   const cx = W / 2, cy = H / 2;
-  // Gouden ellips iets groter dan spiegelglas
   const rx = cx - 8, ry = cy - 8;
+  // Garland radius iets buiten de gouden ellips
+  const grx = rx + 14, gry = ry + 14;
 
-  // Rozenkrans: verdeel 360° in posities langs de ellips
-  // Bloemen op bepaalde graden, knoppen tussenin, bladeren overal
-  const garlandItems = [
-    // Boven
-    { type:'bloom', angle:0,   s:1.15, r:15 },
-    { type:'leaf',  angle:18,  s:1,    r:30, flip:false },
-    { type:'bud',   angle:33,  s:0.9,  r:50 },
-    { type:'leaf',  angle:48,  s:1,    r:60, flip:true  },
+  // Posities langs de krans: {angle, type, sc, rot}
+  // type: 'bloom' | 'bud' | 'leaf'
+  // rot: visuele draaihoek van het element zelf
+  const items = [
+    // Boven midden
+    { angle:0,   type:'bloom', sc:1.25, rot:0   },
+    { angle:14,  type:'leaf',  sc:1.1,  rot:40  },
+    { angle:26,  type:'bud',   sc:1.0,  rot:55  },
+    { angle:38,  type:'leaf',  sc:1.0,  rot:70  },
     // Rechts boven
-    { type:'bloom', angle:65,  s:1.05, r:80 },
-    { type:'leaf',  angle:82,  s:0.9,  r:90, flip:false },
-    { type:'leaf',  angle:96,  s:0.9,  r:100, flip:true },
+    { angle:52,  type:'leaf',  sc:0.95, rot:90  },
+    { angle:64,  type:'bloom', sc:1.15, rot:100 },
+    { angle:78,  type:'leaf',  sc:1.0,  rot:115 },
+    { angle:90,  type:'bud',   sc:0.95, rot:130 },
+    { angle:102, type:'leaf',  sc:1.0,  rot:145 },
     // Rechts midden
-    { type:'bud',   angle:108, s:0.85, r:120 },
-    { type:'bloom', angle:128, s:1.1,  r:140 },
-    { type:'leaf',  angle:145, s:1,    r:155, flip:false },
-    { type:'leaf',  angle:158, s:0.9,  r:165, flip:true  },
+    { angle:116, type:'bloom', sc:1.2,  rot:160 },
+    { angle:130, type:'leaf',  sc:1.0,  rot:175 },
+    { angle:142, type:'bud',   sc:0.9,  rot:190 },
+    { angle:154, type:'leaf',  sc:1.0,  rot:205 },
     // Rechts onder
-    { type:'bud',   angle:170, s:0.88, r:185 },
-    { type:'bloom', angle:188, s:1.05, r:200 },
-    { type:'leaf',  angle:204, s:1,    r:210, flip:false },
-    // Onder
-    { type:'leaf',  angle:217, s:0.9,  r:220, flip:true  },
-    { type:'bud',   angle:228, s:0.9,  r:240 },
-    { type:'bloom', angle:245, s:1.15, r:260 },  // onder midden
-    { type:'bud',   angle:262, s:0.9,  r:280 },
-    { type:'leaf',  angle:273, s:0.9,  r:290, flip:false },
+    { angle:168, type:'bloom', sc:1.1,  rot:220 },
+    { angle:182, type:'leaf',  sc:1.0,  rot:235 },
+    { angle:194, type:'bud',   sc:0.95, rot:250 },
+    // Onder midden
+    { angle:206, type:'leaf',  sc:1.0,  rot:265 },
+    { angle:218, type:'bloom', sc:1.25, rot:180 },
+    { angle:232, type:'leaf',  sc:1.0,  rot:290 },
+    { angle:244, type:'bud',   sc:0.95, rot:305 },
+    { angle:256, type:'leaf',  sc:1.0,  rot:315 },
     // Links onder
-    { type:'leaf',  angle:286, s:1,    r:300, flip:true  },
-    { type:'bloom', angle:302, s:1.05, r:320 },
-    { type:'leaf',  angle:318, s:0.9,  r:330, flip:false },
-    { type:'bud',   angle:330, s:0.88, r:345 },
+    { angle:268, type:'bloom', sc:1.1,  rot:325 },
+    { angle:282, type:'leaf',  sc:1.0,  rot:340 },
+    { angle:294, type:'bud',   sc:0.9,  rot:355 },
+    { angle:306, type:'leaf',  sc:1.0,  rot:10  },
     // Links midden
-    { type:'leaf',  angle:342, s:0.9,  r:355, flip:true  },
-    { type:'bloom', angle:355, s:1.05, r:10  },
+    { angle:318, type:'bloom', sc:1.2,  rot:20  },
+    { angle:332, type:'leaf',  sc:1.0,  rot:35  },
+    { angle:344, type:'bud',   sc:0.95, rot:50  },
+    { angle:356, type:'leaf',  sc:1.0,  rot:65  },
   ];
 
   return (
@@ -241,69 +264,81 @@ function OrnateFrame({ W = 270, H = 330 }) {
           <stop offset="50%"  stopColor="#c49a0c"/>
           <stop offset="100%" stopColor="#f5e642"/>
         </linearGradient>
-        <filter id="gGlow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="3" result="b"/>
+        <filter id="gGlow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="3.5" result="b"/>
           <feComposite in="SourceGraphic" in2="b" operator="over"/>
         </filter>
-        <filter id="softG">
-          <feGaussianBlur stdDeviation="2" result="b"/>
-          <feComposite in="SourceGraphic" in2="b" operator="over"/>
+        <filter id="rBlur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="2.5"/>
         </filter>
-        <filter id="roseGlow">
-          <feGaussianBlur stdDeviation="2" result="b"/>
-          <feComposite in="SourceGraphic" in2="b" operator="over"/>
+        <filter id="leafShadow" x="-30%" y="-30%" width="160%" height="160%">
+          <feDropShadow dx="0.5" dy="1" stdDeviation="1" floodColor="#0a2e04" floodOpacity="0.4"/>
+        </filter>
+        <filter id="bloomShadow" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#3a0008" floodOpacity="0.45"/>
         </filter>
       </defs>
 
-      {/* Groene rank-stengel langs de ellips */}
-      <ellipse cx={cx} cy={cy} rx={rx+2} ry={ry+2}
-        fill="none" stroke="#2a5e14" strokeWidth="4" opacity="0.7"/>
-      <ellipse cx={cx} cy={cy} rx={rx+2} ry={ry+2}
-        fill="none" stroke="#4aaa28" strokeWidth="1.5" opacity="0.38"
-        strokeDasharray="6 8"/>
+      {/* ── Groene rank-stengel ── */}
+      {/* Buitenste dikke stam */}
+      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
+        fill="none" stroke="#1a4a0a" strokeWidth="5" opacity="0.65"/>
+      {/* Middelste groen */}
+      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
+        fill="none" stroke="#3a7e1c" strokeWidth="3" opacity="0.8"/>
+      {/* Highlight op stengel */}
+      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
+        fill="none" stroke="#6ab83a" strokeWidth="1" opacity="0.3"
+        strokeDasharray="4 12"/>
 
-      {/* Gouden dubbele ellips erover */}
-      <ellipse cx={cx} cy={cy} rx={rx}   ry={ry}   fill="none" stroke="url(#gG1)" strokeWidth="6"/>
-      <ellipse cx={cx} cy={cy} rx={rx-8} ry={ry-8} fill="none" stroke="url(#gG2)" strokeWidth="1.8" opacity="0.65"/>
+      {/* ── Gouden ellips OVER de rank ── */}
+      <ellipse cx={cx} cy={cy} rx={rx}   ry={ry}
+        fill="none" stroke="url(#gG1)" strokeWidth="6"/>
+      <ellipse cx={cx} cy={cy} rx={rx-8} ry={ry-8}
+        fill="none" stroke="url(#gG2)" strokeWidth="1.8" opacity="0.6"/>
+      <ellipse cx={cx} cy={cy} rx={rx-14} ry={ry-14}
+        fill="none" stroke="#f5e642" strokeWidth="0.6" opacity="0.22"/>
 
-      {/* Rozenkrans items */}
-      {garlandItems.map((item, i) => {
-        const [px, py] = ptOnEllipse(cx, cy, rx + 3, ry + 3, item.angle);
-        // Tangent-rotatie langs de ellips
-        const tangentAngle = item.angle;
-        if (item.type === 'bloom') return (
-          <Rose key={i} x={px} y={py} s={item.s} r={item.r} bloom={true}/>
-        );
-        if (item.type === 'bud') return (
-          <Bud key={i} x={px} y={py} s={item.s} r={item.r}/>
-        );
+      {/* ── Bladeren eerst (laagste laag) ── */}
+      {items.filter(it => it.type==='leaf').map((item, i) => {
+        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
+        return <RoseLeaf key={`leaf${i}`} x={px} y={py} sc={item.sc} rot={item.rot}/>;
+      })}
+
+      {/* ── Knoppen (middelste laag) ── */}
+      {items.filter(it => it.type==='bud').map((item, i) => {
+        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
         return (
-          <Leaf key={i} x={px} y={py} s={item.s} r={item.r} flip={item.flip}/>
+          <g key={`bud${i}`} filter="url(#bloomShadow)">
+            <RoseBud x={px} y={py} sc={item.sc} rot={item.rot}/>
+          </g>
         );
       })}
 
-      {/* Gloed achter bloemen */}
-      {garlandItems.filter(it => it.type==='bloom').map((item, i) => {
-        const [px, py] = ptOnEllipse(cx, cy, rx + 3, ry + 3, item.angle);
+      {/* ── Bloemen (bovenste laag) ── */}
+      {items.filter(it => it.type==='bloom').map((item, i) => {
+        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
         return (
-          <circle key={`glow${i}`} cx={px} cy={py} r={10}
-            fill="rgba(220,60,80,0.13)" filter="url(#roseGlow)"/>
+          <g key={`bloom${i}`} filter="url(#bloomShadow)">
+            <RoseBloom x={px} y={py} sc={item.sc} rot={item.rot}/>
+          </g>
         );
       })}
 
-      {/* 🪞 in gouden cirkel bovenin */}
-      <circle cx={cx} cy={14} r={21} fill="url(#gG1)" filter="url(#gGlow)"/>
-      <circle cx={cx} cy={14} r={17} fill="#180e04" opacity="0.82"/>
-      <text x={cx} y={20} textAnchor="middle" fontSize="17">🪞</text>
-      <line x1={cx} y1={35} x2={cx} y2={cy-ry} stroke="url(#gG1)" strokeWidth="2.5"/>
-      <circle cx={cx} cy={35} r={3.5} fill="url(#gG1)"/>
+      {/* ── 🪞 Gouden medaillon bovenin ── */}
+      <circle cx={cx} cy={13} r={22} fill="url(#gG1)" filter="url(#gGlow)"/>
+      <circle cx={cx} cy={13} r={18} fill="#130a02"/>
+      <circle cx={cx} cy={13} r={16} fill="url(#gG1)" opacity="0.12"/>
+      <text x={cx} y={20} textAnchor="middle" fontSize="18">🪞</text>
+      <line x1={cx} y1={35} x2={cx} y2={cy-ry} stroke="url(#gG1)" strokeWidth="2.5" opacity="0.8"/>
+      <circle cx={cx} cy={36} r={3.5} fill="url(#gG1)"/>
 
-      {/* Onderkant decoratie */}
-      <path d={`M${cx-38} ${H-16} Q${cx} ${H-4} ${cx+38} ${H-16}`}
+      {/* ── Onderkant sierrand ── */}
+      <path d={`M${cx-40} ${H-18} Q${cx} ${H-5} ${cx+40} ${H-18}`}
         fill="none" stroke="url(#gG1)" strokeWidth="2.5"/>
-      <circle cx={cx} cy={H-5} r={4.5} fill="url(#gG1)"/>
-      {[-20,20].map((dx,i) =>
-        <circle key={i} cx={cx+dx} cy={H-13} r={2.5} fill="#d4a017" opacity="0.7"/>)}
+      <circle cx={cx} cy={H-5} r={5} fill="url(#gG1)"/>
+      {[-22,22].map((dx,i) =>
+        <circle key={i} cx={cx+dx} cy={H-14} r={3} fill="#d4a017" opacity="0.72"/>)}
     </svg>
   );
 }
