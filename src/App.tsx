@@ -1,6 +1,6 @@
 /**
  * Magische Spiegel — Verjaardagsspiegel voor Kinderen
- * Efteling / Anton Piek stijl  ·  v6
+ * Efteling / Anton Piek stijl  ·  v7
  * Wijzigingen v5:
  *  - OrnateFrame vervangen door rozenkrans: groene rank, rozen in bloei, knoppen en bladeren langs ellips
  * Wijzigingen v4:
@@ -92,160 +92,61 @@ Antwoord ALLEEN als JSON zonder markdown:
 {"nl":"...","en":"...","fr":"...","de":"...","facts":[{"year":1984,"nl":"...","en":"...","fr":"...","de":"..."}]}`;
 };
 
-// ── Ornate spiegellijst SVG v6 — botanische rozenkrans ───────────────────
+// ── Ornate spiegellijst SVG v7 — sprookjes emoji-krans ───────────────────
+// Emoji's als SVG <text> elementen langs een golvende rank
+// De rank slingert organisch — afwisselend binnen/buiten de gouden ellips
 
 function ptOnEllipse(cx, cy, rx, ry, angleDeg) {
   const a = (angleDeg - 90) * Math.PI / 180;
   return [cx + rx * Math.cos(a), cy + ry * Math.sin(a)];
 }
 
-// Realistisch blad met nerf, glans, schaduw
-function RoseLeaf({ x, y, sc = 1, rot = 0 }) {
-  return (
-    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
-      {/* Schaduwlaag */}
-      <path d="M0,0 C4,-6 7,-14 4,-22 C1,-28 -5,-24 -6,-16 C-7,-8 -4,-3 0,0Z"
-        fill="#1a4a0a" opacity="0.5"/>
-      {/* Hoofdblad */}
-      <path d="M0,0 C5,-5 8,-13 5,-21 C2,-27 -4,-23 -5,-15 C-6,-7 -3,-2 0,0Z"
-        fill="#2e7d1a"/>
-      {/* Lichtreflectie */}
-      <path d="M0,-2 C3,-7 5,-13 3,-19 C2,-22 0,-20 0,-16 C0,-11 0,-6 0,-2Z"
-        fill="#4caa28" opacity="0.55"/>
-      {/* Nerf */}
-      <path d="M0,-1 C-1,-7 -2,-14 -3,-20" fill="none" stroke="#1a5a0a" strokeWidth="0.6" opacity="0.7"/>
-      <path d="M-1,-8 C-3,-9 -4,-8 -5,-7" fill="none" stroke="#1a5a0a" strokeWidth="0.4" opacity="0.5"/>
-      <path d="M-2,-14 C-4,-15 -4,-13 -5,-12" fill="none" stroke="#1a5a0a" strokeWidth="0.4" opacity="0.5"/>
-    </g>
-  );
-}
-
-// Realistisch rozenknoopje — zijaanzicht, geslotenheid
-function RoseBud({ x, y, sc = 1, rot = 0 }) {
-  return (
-    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
-      {/* Steeltje */}
-      <path d="M0,8 C0,5 1,2 0,0" fill="none" stroke="#2a6614" strokeWidth="1.6"/>
-      {/* Kelkblaadje links */}
-      <path d="M0,2 C-3,0 -5,-2 -4,-6 C-3,-8 -1,-7 0,-5Z"
-        fill="#2e7d1a"/>
-      {/* Kelkblaadje rechts */}
-      <path d="M0,2 C3,0 5,-2 4,-6 C3,-8 1,-7 0,-5Z"
-        fill="#2e7d1a"/>
-      {/* Knop achterste blad */}
-      <path d="M-3,-5 C-4,-10 -3,-15 0,-17 C3,-15 4,-10 3,-5Z"
-        fill="#9b1c30"/>
-      {/* Knop voorste blad */}
-      <path d="M-2,-6 C-3,-11 -1,-15 0,-16 C1,-15 3,-11 2,-6Z"
-        fill="#c42840"/>
-      {/* Knop middenste blad */}
-      <path d="M-1,-8 C-1,-13 0,-15 0,-15 C0,-15 1,-13 1,-8Z"
-        fill="#e0405a"/>
-      {/* Glans */}
-      <path d="M-1,-10 C-1,-13 0,-14 0,-14 C-0.5,-13 -0.5,-11 -1,-10Z"
-        fill="#f8a0b0" opacity="0.6"/>
-    </g>
-  );
-}
-
-// Realistische roos — zij/kwart-aanzicht met uitwaaiende kroonbladen
-function RoseBloom({ x, y, sc = 1, rot = 0 }) {
-  return (
-    <g transform={`translate(${x},${y}) rotate(${rot}) scale(${sc})`}>
-      {/* Drop-shadow */}
-      <ellipse cx={1} cy={2} rx={11} ry={8} fill="rgba(0,0,0,0.28)" filter="url(#rBlur)"/>
-
-      {/* ── Buitenste kroonbladen (5 stuks, breed uitgespreid) ── */}
-      {/* Blad achter-links */}
-      <path d="M0,0 C-8,-2 -14,-6 -13,-13 C-12,-19 -6,-18 -3,-13 C-1,-9 0,-4 0,0Z"
-        fill="#8b1528"/>
-      {/* Blad achter-rechts */}
-      <path d="M0,0 C8,-2 14,-6 13,-13 C12,-19 6,-18 3,-13 C1,-9 0,-4 0,0Z"
-        fill="#8b1528"/>
-      {/* Blad achter-midden */}
-      <path d="M0,0 C-3,-5 -3,-12 0,-16 C3,-12 3,-5 0,0Z"
-        fill="#7a1020"/>
-      {/* Blad voor-links */}
-      <path d="M0,0 C-10,2 -16,0 -15,-7 C-14,-13 -7,-12 -4,-7 C-2,-4 0,-1 0,0Z"
-        fill="#b82038"/>
-      {/* Blad voor-rechts */}
-      <path d="M0,0 C10,2 16,0 15,-7 C14,-13 7,-12 4,-7 C2,-4 0,-1 0,0Z"
-        fill="#b82038"/>
-
-      {/* ── Middelste ring (3 kroonbladen) ── */}
-      <path d="M0,0 C-6,-1 -10,-5 -9,-10 C-8,-14 -4,-13 -2,-9 C-1,-6 0,-2 0,0Z"
-        fill="#d42845"/>
-      <path d="M0,0 C6,-1 10,-5 9,-10 C8,-14 4,-13 2,-9 C1,-6 0,-2 0,0Z"
-        fill="#d42845"/>
-      <path d="M0,0 C-2,-4 -2,-9 0,-12 C2,-9 2,-4 0,0Z"
-        fill="#c02040"/>
-
-      {/* ── Binnenste spiraal ── */}
-      <path d="M0,0 C-4,0 -6,-3 -5,-7 C-4,-10 -2,-9 -1,-6 C0,-4 0,-1 0,0Z"
-        fill="#e83858"/>
-      <path d="M0,0 C4,0 6,-3 5,-7 C4,-10 2,-9 1,-6 C0,-4 0,-1 0,0Z"
-        fill="#e83858"/>
-      {/* Hartje */}
-      <path d="M0,-1 C-2,-2 -3,-5 -2,-7 C-1,-8 0,-7 0,-5 C0,-7 1,-8 2,-7 C3,-5 2,-2 0,-1Z"
-        fill="#f06080"/>
-      {/* Glans lichtpuntje */}
-      <ellipse cx={-2} cy={-6} rx={1.5} ry={1} fill="white" opacity="0.35" transform="rotate(-20,-2,-6)"/>
-      <ellipse cx={2} cy={-8} rx={0.8} ry={0.5} fill="white" opacity="0.25"/>
-
-      {/* ── Kelkblaadjes onderin ── */}
-      <path d="M0,0 C-3,2 -6,4 -7,2 C-8,0 -6,-2 -3,-1Z" fill="#2e7d1a"/>
-      <path d="M0,0 C3,2 6,4 7,2 C8,0 6,-2 3,-1Z"        fill="#2e7d1a"/>
-      <path d="M0,0 C0,3 -1,6 -2,5 C-3,4 -2,2 0,0Z"      fill="#3a8a20"/>
-    </g>
-  );
-}
-
 function OrnateFrame({ W = 270, H = 330 }) {
   const cx = W / 2, cy = H / 2;
-  const rx = cx - 8, ry = cy - 8;
-  // Garland radius iets buiten de gouden ellips
-  const grx = rx + 14, gry = ry + 14;
+  const rx = cx - 10, ry = cy - 10;
 
-  // Posities langs de krans: {angle, type, sc, rot}
-  // type: 'bloom' | 'bud' | 'leaf'
-  // rot: visuele draaihoek van het element zelf
-  const items = [
-    // Boven midden
-    { angle:0,   type:'bloom', sc:1.25, rot:0   },
-    { angle:14,  type:'leaf',  sc:1.1,  rot:40  },
-    { angle:26,  type:'bud',   sc:1.0,  rot:55  },
-    { angle:38,  type:'leaf',  sc:1.0,  rot:70  },
+  // Krans-items: emoji langs de rand, met wisselende offset (binnen/buiten ellips)
+  // offset > 0 = buiten gouden rand (over de rand heen), < 0 = binnen
+  // fontSize bepaalt de grootte
+  const kransPunten = [
+    // Boven
+    { a:  0, emoji:'🌹', fs:22, off: 14, rot:  0 },
+    { a: 14, emoji:'🍀', fs:15, off:  4, rot: 20 },
+    { a: 25, emoji:'🌱', fs:13, off: -2, rot: 35 },
+    { a: 37, emoji:'🥀', fs:17, off:  8, rot: 50 },
+    { a: 50, emoji:'🍀', fs:14, off:  2, rot: 65 },
     // Rechts boven
-    { angle:52,  type:'leaf',  sc:0.95, rot:90  },
-    { angle:64,  type:'bloom', sc:1.15, rot:100 },
-    { angle:78,  type:'leaf',  sc:1.0,  rot:115 },
-    { angle:90,  type:'bud',   sc:0.95, rot:130 },
-    { angle:102, type:'leaf',  sc:1.0,  rot:145 },
+    { a: 63, emoji:'🌸', fs:20, off: 12, rot: 80 },
+    { a: 76, emoji:'🌱', fs:12, off: -4, rot: 95 },
+    { a: 87, emoji:'🍀', fs:15, off:  5, rot:110 },
+    { a: 99, emoji:'🌹', fs:19, off: 11, rot:125 },
+    { a:111, emoji:'🌱', fs:12, off: -3, rot:140 },
     // Rechts midden
-    { angle:116, type:'bloom', sc:1.2,  rot:160 },
-    { angle:130, type:'leaf',  sc:1.0,  rot:175 },
-    { angle:142, type:'bud',   sc:0.9,  rot:190 },
-    { angle:154, type:'leaf',  sc:1.0,  rot:205 },
+    { a:122, emoji:'🍀', fs:16, off:  6, rot:155 },
+    { a:134, emoji:'🥀', fs:18, off: 13, rot:170 },
+    { a:146, emoji:'🌱', fs:13, off: -2, rot:185 },
+    { a:157, emoji:'🌸', fs:20, off: 14, rot:200 },
+    { a:169, emoji:'🍀', fs:14, off:  3, rot:215 },
     // Rechts onder
-    { angle:168, type:'bloom', sc:1.1,  rot:220 },
-    { angle:182, type:'leaf',  sc:1.0,  rot:235 },
-    { angle:194, type:'bud',   sc:0.95, rot:250 },
-    // Onder midden
-    { angle:206, type:'leaf',  sc:1.0,  rot:265 },
-    { angle:218, type:'bloom', sc:1.25, rot:180 },
-    { angle:232, type:'leaf',  sc:1.0,  rot:290 },
-    { angle:244, type:'bud',   sc:0.95, rot:305 },
-    { angle:256, type:'leaf',  sc:1.0,  rot:315 },
+    { a:180, emoji:'🌹', fs:21, off: 14, rot:180 },
+    { a:192, emoji:'🌱', fs:12, off: -4, rot:245 },
+    { a:204, emoji:'🍀', fs:15, off:  5, rot:260 },
+    // Onder
+    { a:216, emoji:'🥀', fs:18, off: 12, rot:200 },
+    { a:228, emoji:'🌱', fs:12, off: -3, rot:290 },
+    { a:239, emoji:'🌸', fs:21, off: 15, rot:185 },
+    { a:251, emoji:'🍀', fs:14, off:  4, rot:320 },
+    { a:263, emoji:'🌹', fs:19, off: 12, rot:195 },
     // Links onder
-    { angle:268, type:'bloom', sc:1.1,  rot:325 },
-    { angle:282, type:'leaf',  sc:1.0,  rot:340 },
-    { angle:294, type:'bud',   sc:0.9,  rot:355 },
-    { angle:306, type:'leaf',  sc:1.0,  rot:10  },
+    { a:274, emoji:'🌱', fs:12, off: -4, rot:350 },
+    { a:286, emoji:'🍀', fs:15, off:  5, rot: 10 },
+    { a:298, emoji:'🌸', fs:20, off: 13, rot: 25 },
+    { a:309, emoji:'🌱', fs:12, off: -2, rot: 40 },
     // Links midden
-    { angle:318, type:'bloom', sc:1.2,  rot:20  },
-    { angle:332, type:'leaf',  sc:1.0,  rot:35  },
-    { angle:344, type:'bud',   sc:0.95, rot:50  },
-    { angle:356, type:'leaf',  sc:1.0,  rot:65  },
+    { a:320, emoji:'🥀', fs:17, off:  9, rot: 55 },
+    { a:332, emoji:'🍀', fs:14, off:  3, rot: 70 },
+    { a:344, emoji:'🌹', fs:20, off: 13, rot: -5 },
+    { a:356, emoji:'🌱', fs:12, off: -3, rot: 10 },
   ];
 
   return (
@@ -268,77 +169,104 @@ function OrnateFrame({ W = 270, H = 330 }) {
           <feGaussianBlur stdDeviation="3.5" result="b"/>
           <feComposite in="SourceGraphic" in2="b" operator="over"/>
         </filter>
-        <filter id="rBlur" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="2.5"/>
+        <filter id="emojiShadow" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="1.5" stdDeviation="2" floodColor="#0a1a04" floodOpacity="0.55"/>
         </filter>
-        <filter id="leafShadow" x="-30%" y="-30%" width="160%" height="160%">
-          <feDropShadow dx="0.5" dy="1" stdDeviation="1" floodColor="#0a2e04" floodOpacity="0.4"/>
-        </filter>
-        <filter id="bloomShadow" x="-40%" y="-40%" width="180%" height="180%">
-          <feDropShadow dx="1" dy="2" stdDeviation="2" floodColor="#3a0008" floodOpacity="0.45"/>
+        <filter id="roseShadow" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="2" stdDeviation="2.5" floodColor="#200010" floodOpacity="0.5"/>
         </filter>
       </defs>
 
-      {/* ── Groene rank-stengel ── */}
-      {/* Buitenste dikke stam */}
-      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
-        fill="none" stroke="#1a4a0a" strokeWidth="5" opacity="0.65"/>
-      {/* Middelste groen */}
-      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
-        fill="none" stroke="#3a7e1c" strokeWidth="3" opacity="0.8"/>
-      {/* Highlight op stengel */}
-      <ellipse cx={cx} cy={cy} rx={grx} ry={gry}
-        fill="none" stroke="#6ab83a" strokeWidth="1" opacity="0.3"
-        strokeDasharray="4 12"/>
-
-      {/* ── Gouden ellips OVER de rank ── */}
-      <ellipse cx={cx} cy={cy} rx={rx}   ry={ry}
-        fill="none" stroke="url(#gG1)" strokeWidth="6"/>
-      <ellipse cx={cx} cy={cy} rx={rx-8} ry={ry-8}
-        fill="none" stroke="url(#gG2)" strokeWidth="1.8" opacity="0.6"/>
-      <ellipse cx={cx} cy={cy} rx={rx-14} ry={ry-14}
-        fill="none" stroke="#f5e642" strokeWidth="0.6" opacity="0.22"/>
-
-      {/* ── Bladeren eerst (laagste laag) ── */}
-      {items.filter(it => it.type==='leaf').map((item, i) => {
-        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
-        return <RoseLeaf key={`leaf${i}`} x={px} y={py} sc={item.sc} rot={item.rot}/>;
-      })}
-
-      {/* ── Knoppen (middelste laag) ── */}
-      {items.filter(it => it.type==='bud').map((item, i) => {
-        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
+      {/* ── Groene slingerende rank-stengel (golvend bezier pad langs de ellips) ── */}
+      {/* We tekenen de rank als een reeks kleine Bezier-bogen die de ellips volgen
+          maar hier en daar wat naar binnen of buiten afwijken */}
+      {(() => {
+        // Bouw een golvend pad van ~72 punten
+        const pts = Array.from({ length: 73 }, (_, i) => {
+          const angle = i * 5; // 0..360
+          const wave = Math.sin(i * 0.9) * 6; // organische golf
+          const [x, y] = ptOnEllipse(cx, cy, rx + wave, ry + wave, angle);
+          return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+        });
         return (
-          <g key={`bud${i}`} filter="url(#bloomShadow)">
-            <RoseBud x={px} y={py} sc={item.sc} rot={item.rot}/>
-          </g>
+          <>
+            <path d={pts.join(' ') + 'Z'} fill="none"
+              stroke="#18420a" strokeWidth="5" opacity="0.6"/>
+            <path d={pts.join(' ') + 'Z'} fill="none"
+              stroke="#3d8e1e" strokeWidth="3" opacity="0.85"/>
+            <path d={pts.join(' ') + 'Z'} fill="none"
+              stroke="#7acc40" strokeWidth="1.2" opacity="0.28"
+              strokeDasharray="3 9"/>
+          </>
+        );
+      })()}
+
+      {/* ── Gouden dubbele ellips OVER de rank ── */}
+      <ellipse cx={cx} cy={cy} rx={rx}    ry={ry}
+        fill="none" stroke="url(#gG1)" strokeWidth="5.5"/>
+      <ellipse cx={cx} cy={cy} rx={rx-8}  ry={ry-8}
+        fill="none" stroke="url(#gG2)" strokeWidth="1.6" opacity="0.6"/>
+      <ellipse cx={cx} cy={cy} rx={rx-13} ry={ry-13}
+        fill="none" stroke="#f5e642" strokeWidth="0.5" opacity="0.18"/>
+
+      {/* ── Emoji krans — laag 1: kleine groene elementen (achter goud) ── */}
+      {kransPunten.filter(p => ['🌱','🍀'].includes(p.emoji)).map((p, i) => {
+        const [px, py] = ptOnEllipse(cx, cy, rx + p.off, ry + p.off, p.a);
+        return (
+          <text key={`g${i}`}
+            x={px} y={py}
+            fontSize={p.fs}
+            textAnchor="middle" dominantBaseline="middle"
+            transform={`rotate(${p.rot},${px},${py})`}
+            filter="url(#emojiShadow)"
+            style={{ userSelect:'none' }}>
+            {p.emoji}
+          </text>
         );
       })}
 
-      {/* ── Bloemen (bovenste laag) ── */}
-      {items.filter(it => it.type==='bloom').map((item, i) => {
-        const [px, py] = ptOnEllipse(cx, cy, grx, gry, item.angle);
+      {/* ── Emoji krans — laag 2: bloemen (voor goud) ── */}
+      {kransPunten.filter(p => ['🌹','🥀','🌸'].includes(p.emoji)).map((p, i) => {
+        const [px, py] = ptOnEllipse(cx, cy, rx + p.off, ry + p.off, p.a);
         return (
-          <g key={`bloom${i}`} filter="url(#bloomShadow)">
-            <RoseBloom x={px} y={py} sc={item.sc} rot={item.rot}/>
-          </g>
+          <text key={`f${i}`}
+            x={px} y={py}
+            fontSize={p.fs}
+            textAnchor="middle" dominantBaseline="middle"
+            transform={`rotate(${p.rot},${px},${py})`}
+            filter="url(#roseShadow)"
+            style={{ userSelect:'none' }}>
+            {p.emoji}
+          </text>
         );
       })}
 
       {/* ── 🪞 Gouden medaillon bovenin ── */}
-      <circle cx={cx} cy={13} r={22} fill="url(#gG1)" filter="url(#gGlow)"/>
-      <circle cx={cx} cy={13} r={18} fill="#130a02"/>
-      <circle cx={cx} cy={13} r={16} fill="url(#gG1)" opacity="0.12"/>
-      <text x={cx} y={20} textAnchor="middle" fontSize="18">🪞</text>
-      <line x1={cx} y1={35} x2={cx} y2={cy-ry} stroke="url(#gG1)" strokeWidth="2.5" opacity="0.8"/>
-      <circle cx={cx} cy={36} r={3.5} fill="url(#gG1)"/>
+      <circle cx={cx} cy={13} r={23} fill="url(#gG1)" filter="url(#gGlow)"/>
+      <circle cx={cx} cy={13} r={19} fill="#100802"/>
+      <circle cx={cx} cy={13} r={17} fill="url(#gG1)" opacity="0.08"/>
+      <text x={cx} y={20} textAnchor="middle" fontSize="18" style={{ userSelect:'none' }}>🪞</text>
+      <line x1={cx} y1={36} x2={cx} y2={cy-ry}
+        stroke="url(#gG1)" strokeWidth="2.5" opacity="0.75"/>
+      <circle cx={cx} cy={37} r={3.5} fill="url(#gG1)"/>
 
       {/* ── Onderkant sierrand ── */}
-      <path d={`M${cx-40} ${H-18} Q${cx} ${H-5} ${cx+40} ${H-18}`}
+      <path d={`M${cx-42} ${H-18} Q${cx} ${H-4} ${cx+42} ${H-18}`}
         fill="none" stroke="url(#gG1)" strokeWidth="2.5"/>
-      <circle cx={cx} cy={H-5} r={5} fill="url(#gG1)"/>
-      {[-22,22].map((dx,i) =>
+      <circle cx={cx} cy={H-4} r={5} fill="url(#gG1)"/>
+      {[-24,24].map((dx, i) =>
         <circle key={i} cx={cx+dx} cy={H-14} r={3} fill="#d4a017" opacity="0.72"/>)}
+
+      {/* ── Hoek-glinstertjes ── */}
+      {[
+        [cx, cy-ry-18], [cx, cy+ry+12],
+        [cx-rx-12, cy], [cx+rx+12, cy],
+      ].map(([ex, ey], i) => (
+        <text key={`sp${i}`} x={ex} y={ey}
+          textAnchor="middle" dominantBaseline="middle"
+          fontSize="10" opacity="0.55"
+          style={{ userSelect:'none' }}>✨</text>
+      ))}
     </svg>
   );
 }
@@ -393,7 +321,7 @@ function SetupOverlay({ step, name, setName, birthInput, setBirthInput,
         value={isName ? name : birthInput}
         onChange={e => isName ? setName(e.target.value) : setBirthInput(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && onConfirm()}
-        placeholder={isName ? 'Typ je naam...' : '15-04 of 15-04-2015'}
+        placeholder={isName ? 'Typ je naam...' : '4 april of 15-04'}
         inputMode={isName ? 'text' : 'numeric'}
         autoFocus
         style={{
@@ -443,7 +371,7 @@ function SetupOverlay({ step, name, setName, birthInput, setBirthInput,
 
       {!isName && (
         <p style={{ fontSize:9, color:'rgba(245,230,66,0.32)', margin:0, textAlign:'center' }}>
-          Bijv: 15-04 of 15-04-2015
+          Bijv: 4 april · april 4 · 15-04
         </p>
       )}
     </motion.div>
@@ -584,10 +512,48 @@ export default function MagischeSpiegel() {
 
   // ── Helpers ──────────────────────────────────────────────────────────────
   const parseBirthDate = (input) => {
-    const clean = input.trim().replace(/[\/\.]/g, '-');
+    const raw = input.trim().toLowerCase();
+
+    // Maandnamen → nummer (NL volledig + afkortingen + EN als bonus)
+    const MAANDEN = {
+      januari:1, jan:1, january:1,
+      februari:2, feb:2, february:2,
+      maart:3, mrt:3, mar:3, march:3,
+      april:4, apr:4,
+      mei:5, may:5,
+      juni:6, jun:6, june:6,
+      juli:7, jul:7, july:7,
+      augustus:8, aug:8,
+      september:9, sep:9, sept:9,
+      oktober:10, okt:10, oct:10, october:10,
+      november:11, nov:11,
+      december:12, dec:12,
+    };
+
+    // ── Poging 1: maandnaam aanwezig (b.v. "4 april", "april 4", "4e april 2010")
+    const maandMatch = raw.match(
+      /\b(januari|jan|februari|feb|maart|mrt|mar|april|apr|mei|juni|jun|juli|jul|augustus|aug|september|sept?|oktober|okt|oct|november|nov|december|dec|january|february|march|may|june|july|august|october)\b/
+    );
+    if (maandMatch) {
+      const month = MAANDEN[maandMatch[1]];
+      // Haal alle losse getallen uit de string
+      const nums = raw.match(/\d+/g)?.map(Number) || [];
+      // Eerste getal <= 31 is de dag, negeer getallen >= 100 (jaar)
+      const day = nums.find(n => n >= 1 && n <= 31);
+      if (day && month) return { day, month };
+    }
+
+    // ── Poging 2: numeriek formaat "15-04", "15/04", "15.04", "15 04"
+    const clean = raw.replace(/[\/\.\s]/g, '-');
     const parts = clean.split('-').map(p => parseInt(p, 10));
-    if (parts.length >= 2 && parts[0]>=1 && parts[0]<=31 && parts[1]>=1 && parts[1]<=12)
-      return { day:parts[0], month:parts[1] };
+    if (parts.length >= 2) {
+      const [a, b] = parts;
+      // dag-maand volgorde
+      if (a >= 1 && a <= 31 && b >= 1 && b <= 12) return { day:a, month:b };
+      // maand-dag volgorde (EN stijl, als a > 12)
+      if (b >= 1 && b <= 31 && a >= 1 && a <= 12) return { day:b, month:a };
+    }
+
     return null;
   };
 
@@ -610,7 +576,7 @@ export default function MagischeSpiegel() {
   // ── Stap 2: datum → API ──────────────────────────────────────────────────
   const confirmDate = () => {
     const parsed = parseBirthDate(birthInput);
-    if (!parsed) { setStatus('Ik begrijp de datum niet. Bijv. 15-04 ✨'); return; }
+    if (!parsed) { setStatus('Ik begrijp de datum niet. Zeg bijv. 4 april of 15-04 ✨'); return; }
     const days = computeDaysUntil(parsed.day, parsed.month);
     parsedDateRef.current = { ...parsed, days };
     setDaysInfo(days);
@@ -645,8 +611,8 @@ export default function MagischeSpiegel() {
       if (target === STEP.NAME) {
         setName(heard.replace(/[^a-zA-ZÀ-ÿ\s'-]/g, '').trim());
       } else {
-        const nums = heard.match(/\d+/g);
-        setBirthInput(nums?.length>=2 ? `${nums[0]}-${nums[1]}` : heard);
+        // Bewaar de gesproken tekst direct — parseBirthDate herkent maandnamen
+        setBirthInput(heard);
       }
     };
     rec.start();
