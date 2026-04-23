@@ -1,6 +1,6 @@
 /**
  * Magische Spiegel — Verjaardagsspiegel voor Kinderen
- * Efteling / Anton Piek stijl  ·  v7
+ * Efteling / Anton Piek stijl  ·  v8
  * Wijzigingen v5:
  *  - OrnateFrame vervangen door rozenkrans: groene rank, rozen in bloei, knoppen en bladeren langs ellips
  * Wijzigingen v4:
@@ -618,6 +618,65 @@ export default function MagischeSpiegel() {
     rec.start();
   };
 
+  // ── Magische fallback-boodschappen (als API niet bereikbaar is) ──────────
+  const buildFallback = (n, day, month, daysUntil) => {
+    const maanden = ['januari','februari','maart','april','mei','juni',
+      'juli','augustus','september','oktober','november','december'];
+    const maand = maanden[month - 1];
+
+    // Persoonlijke boodschap afhankelijk van timing
+    let begroeting = '';
+    if (daysUntil === 0)
+      begroeting = `Vandaag is jouw grote dag, ${n}! De hele wereld is blij dat jij er bent! 🎉`;
+    else if (daysUntil > 0 && daysUntil <= 7)
+      begroeting = `Nog maar ${daysUntil} dag${daysUntil===1?'':'en'} te gaan, ${n}! Jouw verjaardag komt er heel snel aan! 🎈`;
+    else if (daysUntil < 0 && daysUntil >= -7)
+      begroeting = `Gefeliciteerd, ${n}! ${Math.abs(daysUntil)} dag${Math.abs(daysUntil)===1?'':'en'} geleden was jouw bijzondere dag. Ik hoop dat je er nog steeds van geniet! 🎂`;
+    else
+      begroeting = `Wat bijzonder dat jij op ${day} ${maand} geboren bent, ${n}! Dat is een heel magische dag! 🌟`;
+
+    const boodschap = `${begroeting} De Magische Spiegel weet zeker dat jij een heel speciaal iemand bent, want op jouw verjaardag schijnt er altijd een beetje extra magie in de lucht. Sluit je ogen en maak een wens — soms komen die echt uit! ✨`;
+
+    // Vaste sprookjesachtige feitjes per seizoen (zodat het altijd klopt)
+    const seizoenFeitjes = {
+      winter: [ // dec jan feb
+        { year: 1812, nl: 'Schreven de gebroeders Grimm hun eerste sprookjesboek vol magische verhalen voor kinderen.' },
+        { year: 1879, nl: 'Werd voor het eerst elektrisch licht gebruikt — net als een toverstaf die de nacht verlicht!' },
+        { year: 1955, nl: 'Opende het eerste Disneyland zijn poorten, een echt sprookjespark vol dromen.' },
+      ],
+      lente: [ // mrt apr mei
+        { year: 1902, nl: 'Verscheen het eerste boek over het Land van Oz, met de beroemde Tovenaar.' },
+        { year: 1937, nl: 'Was Sneeuwwitje de eerste lange animatiefilm ooit — en ze leefden nog lang en gelukkig!' },
+        { year: 1989, nl: 'Zwom de Kleine Zeemeermin voor het eerst op het witte doek — een magische wereld onder water.' },
+      ],
+      zomer: [ // jun jul aug
+        { year: 1865, nl: 'Dook Alice voor het eerst in het konijnenhol en belandde in Wonderland.' },
+        { year: 1977, nl: 'Vloog Luke Skywalker voor het eerst door de sterren — een sprookje in de ruimte!' },
+        { year: 1997, nl: 'Besteeg Harry Potter voor het eerst zijn bezem en vloog naar Zweinstein.' },
+      ],
+      herfst: [ // sep okt nov
+        { year: 1889, nl: 'Opende de Eiffeltoren zijn deuren — zo hoog als een tovenaars hoed!' },
+        { year: 1928, nl: 'Piepte Mickey Mouse voor het eerst, het begin van een magische wereld vol tekenfilms.' },
+        { year: 1952, nl: 'Verscheen Pippi Langkous voor het eerst op televisie, de sterkste meisje ter wereld.' },
+      ],
+    };
+
+    const seizoen = [12,1,2].includes(month) ? 'winter'
+      : [3,4,5].includes(month) ? 'lente'
+      : [6,7,8].includes(month) ? 'zomer' : 'herfst';
+
+    const feitjes = seizoenFeitjes[seizoen].map(f => ({
+      year: f.year,
+      nl: f.nl, en: f.nl, fr: f.nl, de: f.nl,
+    }));
+
+    return {
+      nl: boodschap, en: boodschap, fr: boodschap, de: boodschap,
+      facts: feitjes,
+      _isFallback: true,
+    };
+  };
+
   // ── Claude API ───────────────────────────────────────────────────────────
   const fetchMessage = async (n, day, month, days) => {
     if (!apiKey) { setStatus('Geen API sleutel ingesteld 🔑'); return; }
@@ -651,12 +710,14 @@ export default function MagischeSpiegel() {
         speakWithFallback(data.nl, 'nl', () => setIsSpeaking(false));
       }
     } catch (err) {
-      // ── v4: vriendelijke foutmelding, voorgelezen ──────────────────────
-      const errorText = 'De spiegel kan nu niet antwoorden. Het is druk op de server. Probeer het later opnieuw!';
-      setStatus(errorText + ' ⏳');
-      setHasError(true);
+      // ── Fallback: spiegel vertelt altijd iets moois ───────────────────
+      const fallback = buildFallback(n, day, month, days);
+      setMessage(fallback);
+      setHasError(false);
+      setStatus('✨ De spiegel spreekt vanuit haar hart...');
+      setTimeout(() => setStatus(''), 3500);
       setIsSpeaking(true);
-      speakWithFallback(errorText, 'nl', () => setIsSpeaking(false));
+      speakWithFallback(fallback.nl, 'nl', () => setIsSpeaking(false));
     }
     setIsThinking(false);
   };
@@ -813,21 +874,16 @@ export default function MagischeSpiegel() {
         )}
       </AnimatePresence>
 
-      {/* ── v4: Opnieuw-knop bij fout ─────────────────────────────────────── */}
+      {/* ── Fallback-indicator: subtiele melding als spiegel uit eigen hart spreekt ── */}
       <AnimatePresence>
-        {isDone && !isThinking && hasError && (
-          <motion.div
-            initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} exit={{ opacity:0 }}
-            style={{ marginTop:12, display:'flex', flexDirection:'column',
-              alignItems:'center', gap:6, position:'relative', zIndex:5 }}
+        {message?._isFallback && !isThinking && (
+          <motion.p
+            initial={{ opacity:0 }} animate={{ opacity:1 }} exit={{ opacity:0 }}
+            style={{ margin:'2px 0 0', fontSize:10, color:'rgba(245,230,66,0.32)',
+              fontStyle:'italic', textAlign:'center', position:'relative', zIndex:5 }}
           >
-            <button onClick={handleRetry} style={S.btnRetry}>
-              🔄 Opnieuw proberen
-            </button>
-            <p style={{ margin:0, fontSize:10, color:'rgba(245,230,66,0.26)', fontStyle:'italic' }}>
-              Tik hier om het nog een keer te proberen
-            </p>
-          </motion.div>
+            ✦ De spiegel spreekt vanuit haar eigen magische geheugen ✦
+          </motion.p>
         )}
       </AnimatePresence>
 
